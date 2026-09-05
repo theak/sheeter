@@ -128,7 +128,8 @@ safe_json = analysis_json.replace("<", "\\u003C")
     <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
 %   end
 %   if verify_available:
-    <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form">
+    <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form"
+          onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Asking Claude, this takes a few seconds';">
       <button type="submit">Verify with Claude</button>
     </form>
 %   end

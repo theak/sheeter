@@ -118,11 +118,13 @@
     AA: 'doubly augmented', dd: 'doubly diminished'
   };
 
-  function intervalWords(code) {
+  function intervalWords(code, index) {
     var match = /^([PMmAd]{1,2})(\d{1,2})$/.exec(String(code || ''));
     if (!match) { return String(code || ''); }
     var number = parseInt(match[2], 10);
-    if (number === 1) { return 'the bass note'; }
+    // Only the first entry is the bass note. A later unison is the same note an octave
+    // or more up, and calling that "the bass note" too names two pitches as the bass.
+    if (number === 1) { return index ? 'the same note, higher up' : 'the bass note'; }
     var quality = QUALITIES[match[1]] || match[1];
     var name = ORDINALS[number] || (number + 'th');
     if (number === 8 || number === 15) { return quality === 'perfect' ? 'an octave up' : quality + ' ' + name; }
@@ -420,6 +422,15 @@
     if (remember) {
       chosenByUser = true;
       store('labelMode', mode);
+      // Asking for every label at once on a dense reading otherwise gives labels stacked
+      // on top of each other, and zooming cannot separate them: it scales the labels and
+      // the gaps between them by the same amount.  Shrinking them can.
+      // Sometimes there is no size that fits.  Four five-note stacks on a phone is
+      // more label than there is screen, and saying so beats leaving it looking broken.
+      if (mode === 'all' && !shrinkToFit() && hint) {
+        hint.textContent = 'These labels are too close together to all fit at this width. '
+          + 'One step at a time is clearer here. ' + hint.textContent;
+      }
     }
     if (mode === 'step') {
       if (selected) { frameStep(steps[selected - 1]); }
@@ -466,7 +477,13 @@
       var shown = displayNames(part);
       block.appendChild(el('p', 'notes-line', shown.join('  ')));
       var extras = [];
-      if (part.chord && part.chord.symbol) { extras.push('on its own: ' + part.chord.symbol); }
+      if (part.chord && part.chord.symbol) {
+        // A power chord's symbol is the root plus a bare 5, which reads as a note name
+        // to someone who knows note names and not chord symbols, which is this reader.
+        extras.push(/^[A-G][b#\u266d\u266f]?5$/.test(part.chord.symbol)
+          ? 'on its own: a bare fifth, ' + part.chord.symbol.slice(0, -1) + ' and the note five above it'
+          : 'on its own: ' + part.chord.symbol);
+      }
       if (part.duration_hint) { extras.push(part.duration_hint + (part.dotted ? ', dotted' : '') + ' notes'); }
       if (shown.length === 1) {
         extras.push('a single note');
@@ -484,7 +501,8 @@
       names.forEach(function (name, index) {
         var item = el('li');
         item.appendChild(el('b', null, name));
-        var words = intervals.length === names.length ? intervalWords(intervals[index]) : '';
+        var words = intervals.length === names.length
+          ? intervalWords(intervals[index], index) : '';
         if (words) { item.appendChild(document.createTextNode(' - ' + words)); }
         list.appendChild(item);
       });
@@ -635,6 +653,16 @@
   });
 
   var sizeRange = document.getElementById('size-range');
+  var MIN_LEGIBLE_LABEL = 8;
+
+  function shrinkToFit() {
+    var size = parseInt(labels.style.getPropertyValue('--label-size'), 10) || 12;
+    while (size > MIN_LEGIBLE_LABEL && anyOverlap()) {
+      size -= 1;
+      setSize(size);
+    }
+    return !anyOverlap();
+  }
 
   function setSize(px) {
     var size = clamp(parseInt(px, 10) || 12, 7, 26);
@@ -732,7 +760,10 @@
     var target = clamp(Math.min(wanted, fits), 1, STEP_MAX_SCALE);
 
     glide();
-    scale = Math.max(scale, target);
+    // Never Math.max here: a reader who zoomed in by hand and then pressed Next would
+    // keep that zoom, and the step being framed would sit off screen with its labels.
+    // Keep a manual zoom only while it still shows the whole step.
+    scale = (scale > target && scale <= fits) ? scale : target;
     offsetX = vw / 2 - (left + right) / 2 * scale;
     offsetY = vh / 2 - (top + bottom) / 2 * scale;
     applyTransform();
