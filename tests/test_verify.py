@@ -143,6 +143,15 @@ def correction(systems, system_notes=""):
     return {"systems": systems, "system_notes": system_notes}
 
 
+def confirmation(index=0):
+    """A response that answers about a system without changing anything.
+
+    An empty ``systems`` list is not this: it names no system at all, which the
+    merge applies cleanly and which must not count as a check having happened.
+    """
+    return correction([{"index": index, "staves": [], "events": []}])
+
+
 def pitch_names(doc, system=0, event=0, staff=0):
     part = next(p for p in doc["systems"][system]["events"][event]["parts"]
                 if p["staff"] == staff)
@@ -171,10 +180,6 @@ def test_verify_analysis_without_key_keeps_the_reading(doc, png):
     assert "ANTHROPIC_API_KEY" in out["engine"]["verifier_error"]
     assert out["systems"] == before["systems"]
     schema.validate_analysis(out)
-
-
-def test_name_events_without_key_is_a_noop(doc):
-    assert verify.name_events(doc) is doc
 
 
 # --------------------------------------------------------------------------
@@ -433,15 +438,24 @@ def test_verify_analysis_reads_dict_blocks(doc, png):
     client = FakeClient({"stop_reason": "tool_use", "content": [
         {"type": "text", "text": "ignored"},
         {"type": "tool_use", "name": verify.CORRECTION_TOOL,
-         "input": correction([])},
+         "input": confirmation()},
     ]})
     out = verify.verify_analysis(doc, png, client=client)
     assert out["engine"]["verified"] is True
 
 
+def test_a_response_naming_no_system_is_not_a_check(doc, png):
+    """It merges cleanly and changes nothing, so the only thing separating it from a
+    real confirmation is whether it answered about anything."""
+    client = FakeClient(Response([Block(verify.CORRECTION_TOOL, correction([]))]))
+    out = verify.verify_analysis(doc, png, client=client)
+    assert out["engine"]["verified"] is False
+    assert "did not answer" in out["engine"]["verifier_error"]
+
+
 def test_verify_analysis_uses_the_environment_model(doc, png, monkeypatch):
     monkeypatch.setenv("SHEETER_VERIFY_MODEL", "claude-opus-5")
-    client = FakeClient(Response([Block(verify.CORRECTION_TOOL, correction([]))]))
+    client = FakeClient(Response([Block(verify.CORRECTION_TOOL, confirmation())]))
     out = verify.verify_analysis(doc, png, client=client)
     assert client.messages.calls[0]["model"] == "claude-opus-5"
     assert out["engine"]["verifier"] == "claude-opus-5"
@@ -486,55 +500,3 @@ def test_a_bad_correction_leaves_the_document_alone(doc, png, monkeypatch):
     assert out["engine"]["verified"] is False
     assert "schema" in out["engine"]["verifier_error"]
     assert pitch_names(out) == ["E4", "G4", "C5"]
-
-
-# --------------------------------------------------------------------------
-# name_events
-
-
-def test_name_events_upgrades_symbols_and_notes(doc):
-    client = FakeClient(Response([Block(verify.SYMBOL_TOOL, {"events": [
-        {"system": 0, "index": 0, "symbol": "Cmaj7/E", "role": "I",
-         "note": "The bass moves down a fifth into the next chord."},
-    ]})]))
-    before = copy.deepcopy(doc)
-    out = verify.name_events(doc, client=client)
-    assert doc == before
-    event = out["systems"][0]["events"][0]
-    assert event["combined"]["symbol"] == "Cmaj7/E"
-    assert event["combined"]["roman"] == "I"
-    assert event["note"].startswith("The bass moves")
-    assert client.messages.calls[0]["model"] == verify.DEFAULT_SYMBOL_MODEL
-    assert client.messages.calls[0]["temperature"] == 0
-    schema.validate_analysis(out)
-
-
-def test_name_events_survives_a_broken_response(doc):
-    client = FakeClient(Response([Block(verify.SYMBOL_TOOL, {"events": [
-        {"system": 9, "index": 0, "symbol": "X"},
-        "not a dict",
-        {"system": 0, "index": 0, "symbol": 12, "role": None, "note": ""},
-    ]})]))
-    before = copy.deepcopy(doc)
-    out = verify.name_events(doc, client=client)
-    assert doc == before
-    assert out["systems"][0]["events"][0]["combined"]["symbol"] == \
-        before["systems"][0]["events"][0]["combined"]["symbol"]
-    schema.validate_analysis(out)
-
-
-def test_name_events_never_raises(doc):
-    client = FakeClient(error=ValueError("no"))
-    assert verify.name_events(doc, client=client) is doc
-
-
-def test_name_events_leaves_an_unnameable_event_alone(doc):
-    assert doc["systems"][0]["events"][2]["combined"] is None
-    client = FakeClient(Response([Block(verify.SYMBOL_TOOL, {"events": [
-        {"system": 0, "index": 2, "symbol": "F", "role": "IV",
-         "note": "Both hands land on F."},
-    ]})]))
-    out = verify.name_events(doc, client=client)
-    assert out["systems"][0]["events"][2]["combined"] is None
-    assert out["systems"][0]["events"][2]["note"] == "Both hands land on F."
-    schema.validate_analysis(out)

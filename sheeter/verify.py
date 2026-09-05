@@ -16,10 +16,6 @@ Two passes, both optional and independent:
     OMR engine in front of this, so the clef and key signature are geometry's
     guesses and the model is told to re-read both from the image.
 
-``name_events``
-    One cheap text call per document that upgrades chord symbols and adds a line
-    of insight per event.  No image, no pitch changes.
-
 Merging is deliberately timid.  A pitch moves only when the model returned a
 well formed name for that exact slot; everything else is re-derived from
 ``sheeter.pitches`` so the document stays internally consistent, and the merged
@@ -31,16 +27,15 @@ import copy
 import io
 import json
 import os
+import sys
 
 from PIL import Image
 
 from . import naming, pitches, schema
 
 DEFAULT_VERIFY_MODEL = "claude-sonnet-5"
-DEFAULT_SYMBOL_MODEL = "claude-haiku-4-5"
 
 CORRECTION_TOOL = "corrected_reading"
-SYMBOL_TOOL = "chord_labels"
 
 #: Sonnet 5 is in the high resolution vision tier: 2576 px on the long edge,
 #: above which the API downscales the image for us.  Doing it here instead keeps
@@ -57,7 +52,6 @@ WIDE_IMAGE_PX = 1600
 MAX_IMAGE_BLOCKS = 8
 
 VERIFY_MAX_TOKENS = 8000
-SYMBOL_MAX_TOKENS = 4000
 
 _ACCIDENTAL_ALTER = {
     "flat": -1, "sharp": 1, "natural": 0, "double-flat": -2, "double-sharp": 2,
@@ -94,20 +88,6 @@ Rules:
 - Return every event you were given, corrected or not, through the
   corrected_reading tool. Pitch names are ascii: a letter, then # or b repeated
   once per semitone, then the octave, e.g. Bb3, F#5, C4.
-"""
-
-SYMBOL_PROMPT = """\
-You are a jazz pianist labelling the chords of a piece for another player.
-For each event you are given the pitches bottom to top and the key signature.
-Return, through the chord_labels tool:
-- symbol: a concise jazz or pop chord symbol, e.g. Bbmaj9, Eb6/9, Gm11,
-  F7(b9,13). Prefer the reading a player would write on a chart. If the notes
-  are a single melodic line, return the note name instead.
-- role: the Roman numeral relative to the key signature read as a major key,
-  e.g. I, IV, vi. Empty string if the chord does not sit in the key.
-- note: at most one sentence of insight, such as the voice leading from the
-  previous event or an enharmonic remark. Empty string if there is nothing
-  worth saying.
 """
 
 
@@ -301,7 +281,10 @@ def _correction_tool():
         "type": "object",
         "properties": {
             "index": {"type": "integer", "description": "staff index within the system"},
-            "clef": {"type": "string", "enum": list(schema.CLEFS)},
+            # Only the two clefs the reader supports.  schema.CLEFS also lists alto
+            # and tenor, and accepting one of those would re-spell every notehead on
+            # the staff several steps off with nothing downstream to catch it.
+            "clef": {"type": "string", "enum": ["treble", "bass"]},
             "key_fifths": {
                 "type": "integer",
                 # Strict tool schemas reject minimum and maximum on an integer, so the
@@ -486,7 +469,7 @@ def _apply_staves(system, payload_staves):
             continue
         moved = False
         clef = entry.get("clef")
-        if clef in schema.CLEFS and clef != staff["clef"]:
+        if clef in ("treble", "bass") and clef != staff["clef"]:
             staff["clef"] = clef
             moved = True
         fifths = _int(entry.get("key_fifths"))
@@ -508,12 +491,13 @@ def _apply_names(part, names, staff, event):
     alterations = pitches.key_alterations(staff["key_fifths"])
 
     # Our note lists run low to high, but a model reading a chord off the page
-    # naturally reads it top to bottom (the plan's own example response does).
-    # Slot i has to mean the same notehead on both sides or the overlay lands on
-    # the wrong line, so an entirely descending answer is turned round.
-    midis = [pitches.step_to_midi(*p) for p in parsed if p is not None]
-    if len(midis) == len(parsed) > 1 and all(a > b for a, b in zip(midis, midis[1:])):
-        parsed.reverse()
+    # naturally reads it top to bottom.  Slot i has to mean the same notehead on both
+    # sides or the overlay lands on the wrong line, so sort rather than guess the
+    # direction: an answer that is neither strictly ascending nor strictly descending,
+    # which one transposition or one repeated pitch is enough to produce, would
+    # otherwise be zipped on in whatever order it arrived.
+    if all(pitch is not None for pitch in parsed):
+        parsed.sort(key=lambda pitch: pitches.step_to_midi(*pitch))
 
     if len(parsed) == len(part["notes"]):
         notes = []
@@ -597,13 +581,25 @@ def _rename_chords(system, before):
                 moved = True
             previous[part["staff"]] = names
         if moved:
-            pooled = sorted(
-                (n for p in event["parts"] for n in p["notes"]), key=lambda n: n["midi"]
-            )
-            event["combined"] = naming.name_combined([n["name"] for n in pooled], key)
+            # De-duplicated the same way pipeline.name_everything does it: a pitch
+            # doubled between the hands is one note of the chord, not two, and listing
+            # it twice would show up in combined.names on the page.
+            pooled, seen = [], set()
+            for note in sorted((n for p in event["parts"] for n in p["notes"]),
+                               key=lambda n: n["midi"]):
+                if note["name"] not in seen:
+                    seen.add(note["name"])
+                    pooled.append(note["name"])
+            event["combined"] = naming.name_combined(pooled, key)
 
 
 def _merge(doc, payload):
+    """Returns ``(document, systems_resolved)``.
+
+    The count matters: a response naming no system we know about merges cleanly and
+    changes nothing, and without it the caller cannot tell that from a real check.
+    """
+    resolved = 0
     out = copy.deepcopy(doc)
     by_index = dict((s["index"], s) for s in out["systems"])
     # out is a copy, so doc still holds each system as it was before the merge.
@@ -614,6 +610,7 @@ def _merge(doc, payload):
         system = by_index.get(_int(entry.get("index")))
         if system is None:
             continue
+        resolved += 1
         for staff in _apply_staves(system, entry.get("staves")):
             _reread(system, staff)
         _apply_events(system, entry.get("events"),
@@ -625,7 +622,7 @@ def _merge(doc, payload):
         line = notes.strip()[:300]
         if line not in out["warnings"]:
             out["warnings"].append(line)
-    return out
+    return out, resolved
 
 
 #: A geometry reading this sure is not overruled from a photograph.  Measured against
@@ -681,14 +678,20 @@ def apply_correction(doc, payload):
     ignored rather than acted on, so a partly broken response still buys the
     corrections it got right.
     """
+    return _correct(doc, payload)[0]
+
+
+def _correct(doc, payload):
+    """``(document, systems_resolved)``.  Resolved is 0 when nothing was applied."""
     if not isinstance(payload, dict):
-        return doc
+        return doc, 0
     try:
-        out = _enforce_trust(doc, _merge(doc, payload))
+        merged, resolved = _merge(doc, payload)
+        out = _enforce_trust(doc, merged)
         schema.validate_analysis(out)
     except Exception:
-        return doc
-    return out
+        return doc, 0
+    return out, resolved
 
 
 # --------------------------------------------------------------------------
@@ -720,123 +723,15 @@ def verify_analysis(doc, image_png_bytes, client=None, model=None):
     if payload is None:
         return _skipped(doc, "the verifier returned no corrected_reading")
 
-    out = apply_correction(doc, payload)
+    out, resolved = _correct(doc, payload)
     if out is doc:
         return _skipped(doc, "the corrected reading did not fit the schema")
+    if not resolved:
+        # A response that named no system we know about merges cleanly and changes
+        # nothing.  Calling that verified would put "checked by Claude" on the page and
+        # take the button away, so it counts as a miss.
+        return _skipped(doc, "the verifier did not answer about this page")
     out["engine"]["verifier"] = model
     out["engine"]["verified"] = True
     out["engine"]["verifier_error"] = None
     return out
-
-
-def _symbol_tool():
-    event = {
-        "type": "object",
-        "properties": {
-            "system": {"type": "integer"},
-            "index": {"type": "integer"},
-            "symbol": {"type": "string"},
-            "role": {"type": "string", "description": "Roman numeral, or empty"},
-            "note": {"type": "string", "description": "one sentence, or empty"},
-        },
-        "required": ["system", "index", "symbol", "role", "note"],
-        "additionalProperties": False,
-    }
-    return {
-        "name": SYMBOL_TOOL,
-        "description": "Label every event with a chord symbol and a line of insight.",
-        "strict": True,
-        "input_schema": {
-            "type": "object",
-            "properties": {"events": {"type": "array", "items": event}},
-            "required": ["events"],
-            "additionalProperties": False,
-        },
-    }
-
-
-def _symbol_view(doc):
-    events = []
-    for system in doc["systems"]:
-        key = system["staves"][0]["key_fifths"] if system["staves"] else 0
-        for event in system["events"]:
-            pooled = sorted(
-                (n["midi"], n["name"]) for p in event["parts"] for n in p["notes"]
-            )
-            names = []
-            for _midi, name in pooled:
-                if name not in names:
-                    names.append(name)
-            events.append({
-                "system": system["index"],
-                "index": event["index"],
-                "key_fifths": key,
-                "pitches": names,
-            })
-    return events
-
-
-def _apply_labels(doc, payload):
-    out = copy.deepcopy(doc)
-    systems = dict((s["index"], s) for s in out["systems"])
-    for entry in payload.get("events") or []:
-        if not isinstance(entry, dict):
-            continue
-        system = systems.get(_int(entry.get("system")))
-        if system is None:
-            continue
-        events = dict((e["index"], e) for e in system["events"])
-        event = events.get(_int(entry.get("index")))
-        if event is None:
-            continue
-        symbol = entry.get("symbol")
-        role = entry.get("role")
-        text = entry.get("note")
-        # combined is null for a single note or a bare octave; there is no chord
-        # to relabel there, and a half built combined dict fails validation.
-        if event["combined"] is not None:
-            if isinstance(symbol, str) and symbol.strip():
-                event["combined"]["symbol"] = symbol.strip()[:40]
-            if isinstance(role, str) and role.strip():
-                event["combined"]["roman"] = role.strip()[:12]
-        if isinstance(text, str) and text.strip():
-            event["note"] = text.strip()[:200]
-    schema.validate_analysis(out)
-    return out
-
-
-def name_events(doc, client=None, model=None):
-    """Upgrade chord symbols and add one line of insight per event.
-
-    One text call for the whole document, no image, no pitch changes.  Returns
-    *doc* unchanged when there is no key configured or anything goes wrong.
-    """
-    model = model or os.environ.get("SHEETER_SYMBOL_MODEL") or DEFAULT_SYMBOL_MODEL
-    if client is None:
-        if not available():
-            return doc
-        try:
-            client = _new_client()
-        except Exception:
-            return doc
-    events = _symbol_view(doc)
-    if not events:
-        return doc
-    try:
-        # Haiku 4.5 still accepts sampling parameters; the 5 series rejects them.
-        extra = {"temperature": 0} if model.startswith("claude-haiku") else {}
-        response = client.messages.create(
-            model=model,
-            max_tokens=SYMBOL_MAX_TOKENS,
-            system=SYMBOL_PROMPT,
-            messages=[{"role": "user", "content": "Events:\n%s" % _json(events)}],
-            tools=[_symbol_tool()],
-            tool_choice={"type": "tool", "name": SYMBOL_TOOL},
-            **extra
-        )
-        payload = _tool_input(response, SYMBOL_TOOL)
-        if payload is None:
-            return doc
-        return _apply_labels(doc, payload)
-    except Exception:
-        return doc

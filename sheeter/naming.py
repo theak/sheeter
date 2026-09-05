@@ -221,7 +221,10 @@ def _read(root_pc, pcs):
     if fifth is None:
         cost += 0.4
     if sixth:
-        cost += 0.1
+        # A sixth with no fifth under it is almost always a minor triad in first
+        # inversion heard from the wrong end: A C# F# is F#m/A, not A6, because a real
+        # A6 would have the E.  Without this, the bass discount alone decides it.
+        cost += 0.7 if fifth is None else 0.1
     dominant = third == "M" and seventh == "m"
     for semitone in tensions:
         cost += _tension_cost(semitone, third, dominant)

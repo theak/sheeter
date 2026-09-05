@@ -36,6 +36,7 @@
   var detail = document.getElementById('detail');
   var stageEmpty = document.getElementById('stage-empty');
   var controls = document.querySelector('.stage-controls');
+  var hint = document.querySelector('.stage-hint');
   var stepBar = document.getElementById('step-bar');
   var stepStatus = document.getElementById('step-status');
   var stepPrev = document.getElementById('step-prev');
@@ -194,7 +195,7 @@
       bandBottom: clamp(bottom + unit * 0.8, 0, imageHeight),
       // What a zoom has to keep on screen: the staves plus room for a chord label above and
       // the numbered dot below.
-      frameTop: clamp(top - unit * 2.8, 0, imageHeight),
+      frameTop: clamp(top - unit * 3.2, 0, imageHeight),
       frameBottom: clamp(bottom + unit * 2.0, 0, imageHeight)
     };
     return system.__geom;
@@ -272,9 +273,18 @@
 
     var symbol = event.combined && event.combined.symbol;
     if (symbol) {
+      // Clear of this event's own noteheads where the photo has room for it, otherwise just
+      // clear of the staff, otherwise underneath the system.  layoutLabels() picks.
+      var highest = geom.top;
+      (event.parts || []).forEach(function (part) {
+        (part.notes || []).forEach(function (note) {
+          highest = Math.min(highest, note.y - (note.h || 0) / 2);
+        });
+      });
       makePill('chord', 'C', [symbol], step, {
         kind: 'chord',
         x: event.x,
+        raised: highest - geom.unit * 0.7,
         above: geom.top - geom.unit * 0.7,
         below: geom.bottom + geom.unit * 0.7
       });
@@ -315,7 +325,8 @@
         y = anchor.cy * k - size.h / 2;
       } else {
         x = anchor.x * k - size.w / 2;
-        y = anchor.above * k - size.h;
+        y = anchor.raised * k - size.h;
+        if (y < EDGE) { y = anchor.above * k - size.h; }
         if (y < EDGE) { y = anchor.below * k; }
       }
       x = clamp(x, EDGE, Math.max(EDGE, width - size.w - EDGE));
@@ -376,6 +387,12 @@
       stepBar.classList.add('on');
       stepBar.classList.toggle('step-mode', mode === 'step');
     }
+    if (hint) {
+      hint.textContent = (mode === 'step'
+        ? 'Tap a numbered dot to read that step, or use Prev and Next, or the arrow keys. '
+        : 'Tap any label to read that step. ') +
+        'Pinch or use + and - to zoom; drag to move around; Fit puts it back.';
+    }
     layoutLabels();
     if (remember) {
       chosenByUser = true;
@@ -396,7 +413,7 @@
       stepStatus.textContent = 'Step ' + selected + ' of ' + steps.length +
         (combined.symbol ? ' - ' + combined.symbol : '');
     } else {
-      stepStatus.textContent = steps.length + ' steps. Tap a numbered dot, or press Next.';
+      stepStatus.textContent = steps.length + ' steps - pick one';
     }
     if (stepPrev) { stepPrev.disabled = selected <= 1; }
     if (stepNext) { stepNext.disabled = selected >= steps.length; }
@@ -511,10 +528,24 @@
     detail.hidden = false;
     layoutLabels();
     updateStepBar();
-    if (mode === 'step') { frameStep(step); }
+    if (mode === 'step') {
+      frameStep(step);
+      keepStageVisible();
+    }
     if (scrollToDetail) {
       detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
+  }
+
+  // Stepping is useless if the photo is off screen or hiding under the sticky control bar,
+  // which is easy on a phone once the reading table has been scrolled to.
+  function keepStageVisible() {
+    var top = viewport.getBoundingClientRect().top;
+    // While the control bar is stuck to the top of the window it hides everything above its
+    // bottom edge, which is exactly where a chord label sits.
+    var floor = controls ? Math.max(controls.getBoundingClientRect().bottom, 8) : 8;
+    if (top >= floor && top < window.innerHeight * 0.5) { return; }
+    window.scrollBy({ top: top - floor - 8, left: 0, behavior: 'smooth' });
   }
 
   for (var r = 0; r < rows.length; r++) {

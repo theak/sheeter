@@ -213,17 +213,30 @@ def rename(analysis_id, title):
 
 
 def _summary(doc):
-    """A one-line taste of the music, e.g. ``Bbmaj9 - Eb6/9 - Gm11``."""
+    """A one-line taste of the music, e.g. ``Bbmaj9 - Eb6/9 - Gm11``.
+
+    A single melodic line has no chords to list, and saying so on the card reads like
+    the reading failed when it did not, so fall back to the notes themselves.
+    """
     symbols = []
+    notes = []
     for system in doc.get("systems") or []:
         for event in system.get("events") or []:
-            combined = event.get("combined")
-            symbol = combined.get("symbol") if combined else None
+            combined = event.get("combined") or {}
+            symbol = combined.get("symbol")
             if symbol:
                 symbols.append(symbol)
+            elif len(notes) < SUMMARY_CHORDS:
+                for part in event.get("parts") or []:
+                    for note in part.get("notes") or []:
+                        notes.append(note.get("pretty") or note.get("name"))
+                        break
+                    break
             if len(symbols) >= SUMMARY_CHORDS:
                 return " - ".join(symbols)
-    return " - ".join(symbols)
+    if symbols:
+        return " - ".join(symbols)
+    return " - ".join(n for n in notes[:SUMMARY_CHORDS] if n)
 
 
 def _timestamp(doc, directory):
@@ -303,7 +316,14 @@ def usage():
             continue
         if os.path.isfile(os.path.join(directory, "analysis.json")):
             count += 1
-        for entry in os.scandir(directory):
+        # The scandir call itself has to be guarded, not just the loop body: a delete
+        # landing between the isdir check above and this line raises out of usage(),
+        # and usage() is on the path that renders the gallery and the health check.
+        try:
+            entries = list(os.scandir(directory))
+        except OSError:
+            continue
+        for entry in entries:
             try:
                 if entry.is_file():
                     total += entry.stat().st_size

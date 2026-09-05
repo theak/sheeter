@@ -303,3 +303,26 @@ def test_symbol_never_silently_drops_a_note():
                     assert any(e in tail for e in ("9", "11", "13")), symbol
                 else:
                     assert label in tail, (symbol, label)
+
+
+class TestNamingBeatsTheModels:
+    """Why there is no language model in the chord naming path.
+
+    Plan section 6b proposes a cheap text call to upgrade the chord symbols.  It was
+    built and measured against these four voicings, and both tiers that were tried got
+    three of the four wrong, each time by naming a chord containing a note that is not
+    on the page: Ebmaj7 for a chord with no D in it, Gm7b5 and Gm11 for a chord with no
+    F, Bb6/9 and Bbmaj9 for a chord with no Bb.  Deriving the symbol from the pitch
+    class set gets all four right, so that is what ships.
+    """
+
+    CASES = [
+        (["Bb2", "F3", "C5", "D5", "F5", "A5"], "Bbmaj9"),
+        (["Eb3", "Bb3", "Bb4", "C5", "Eb5", "G5"], "Eb6"),
+        (["G2", "D3", "D5", "Eb5", "G5", "Bb5"], "Ebmaj7/G"),
+        (["F2", "C3", "C5", "D5", "F5", "A5"], "F6"),
+    ]
+
+    @pytest.mark.parametrize("names, symbol", CASES)
+    def test_symbol(self, names, symbol):
+        assert naming.name_combined(names, -2)["symbol"] == symbol

@@ -220,7 +220,14 @@
   height: auto;
 }
 
-.labels { position: absolute; inset: 0; }
+/* margin and display are reset because Pico styles [role=group] as a button bar, and its
+   margin-bottom was shrinking this layer 16px short of the photo it sits on. */
+.labels {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: 0;
+}
 
 .pill {
   position: absolute;
@@ -280,6 +287,8 @@
   background: none;
   cursor: pointer;
   pointer-events: auto;
+  /* Under the labels: a wide label always covers the next event or two, and the note names
+     matter more than the dot.  The band stays tappable above and below the label. */
   z-index: 1;
 }
 .labels.mode-step .step-mark { display: block; }

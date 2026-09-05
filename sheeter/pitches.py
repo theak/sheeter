@@ -127,13 +127,18 @@ def step_to_y(step, lines, clef):
 
 
 def ledger_count(step, clef):
-    """Ledger lines a step needs: ``+n`` above the staff, ``-n`` below, 0 for none."""
-    bottom = CLEF_BOTTOM_LINE_STEP[clef]
-    k = step - bottom            # half-space position above the bottom line
-    if k > 8:                    # above the top line (k == 8)
-        return (k - 8 + 1) // 2
-    if k < 0:
-        return -((-k + 1) // 2)
+    """Ledger lines a step needs: ``+n`` above the staff, ``-n`` below, 0 for none.
+
+    The staff runs from ``k == 0`` (the bottom line) to ``k == 8`` (the top line), and
+    the space immediately outside either end still needs no ledger, so nothing is drawn
+    until ``k`` reaches 10 or -2.  A note in a space beyond that sits above or below the
+    last ledger line it needs, not on one of its own.
+    """
+    k = step - CLEF_BOTTOM_LINE_STEP[clef]   # half-space position above the bottom line
+    if k > 9:
+        return (k - 8) // 2
+    if k < -1:
+        return -((-k) // 2)
     return 0
 
 

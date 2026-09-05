@@ -446,9 +446,11 @@ def test_works_when_the_data_dir_does_not_exist_yet(tmp_path, monkeypatch):
 
 # --- melody, no chords ----------------------------------------------------
 
-def test_single_note_events_get_an_empty_summary(data_root):
+def test_single_note_events_are_summarised_by_their_notes(data_root):
+    """A melody line has no chord symbols, but the card still has to say something.
+    Leaving it blank reads as a failed reading when the reading was fine."""
     ident, _ = save_one(b"a melody line", chords=[["C4"], ["D4"], ["E4"]])
     entry = store.listing()[0]
-    assert entry["summary"] == ""
+    assert entry["summary"] == "C4 - D4 - E4"
     assert entry["event_count"] == 3
     assert entry["note_count"] == 3
