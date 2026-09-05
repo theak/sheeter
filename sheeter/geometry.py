@@ -204,7 +204,10 @@ def remove_staff_lines(mask, lines_mask, thickness, unit):
     """
     runs = run_lengths(mask)
     thin = (runs > 0) & (runs <= max(2, int(round(thickness * 2.2))))
-    erase = staff_line_mask(mask, thickness, unit, reach=1.2)
+    # 1.5 staff spaces sits between the two things that matter: a notehead is 1.3 wide
+    # and must survive, a ledger line is about 1.8 and must not.  Going shorter erases
+    # the flat top and bottom of a hollow notehead's rim along with the lines.
+    erase = staff_line_mask(mask, thickness, unit, reach=1.5)
     bridged = ndimage.binary_closing(
         erase | lines_mask, structure=np.ones((1, max(3, int(round(unit * 2.5))))))
     return mask & ~(bridged & thin)
@@ -492,7 +495,13 @@ def _ledger_row_ok(mask, x, staff, unit, thickness, k):
         left -= 1
     while right + 1 < band.size and band[right + 1] and right - column < span:
         right += 1
-    return unit * 1.05 <= (right - left + 1) <= unit * 8.0
+    if right - left + 1 > unit * 8.0:
+        return False
+    # A ledger line always sticks out past the notehead it carries.  Measuring only the
+    # total run would let a notehead's own body, which is 1.3 spaces wide, vouch for a
+    # ledger that was never drawn.
+    reach_out = max(column - left, right - column)
+    return reach_out >= unit * 0.78
 
 
 def time_signature_edge(mask_ns, staff, band, unit, x_from):
