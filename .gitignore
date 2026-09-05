@@ -1,0 +1,11 @@
+*~
+.DS_Store
+#*#
+__pycache__
+*.pyc
+.venv
+/data/
+/tests/fixtures/*.png
+/tests/fixtures/*.jpg
+/tests/fixtures/*.svg
+.pytest_cache

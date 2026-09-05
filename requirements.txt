@@ -1,0 +1,7 @@
+numpy
+scipy
+pillow
+music21
+anthropic
+bottle
+waitress
