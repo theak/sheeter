@@ -41,8 +41,23 @@ MANIFEST_SCHEMA = 1
 
 
 def ev(ql, **parts):
-    """One simultaneity: a quarterLength and a pitch list per staff label."""
+    """One simultaneity: a pitch list per staff label, and how long it lasts.
+
+    *ql* is normally a single quarterLength for the whole simultaneity.  Pass a dict
+    keyed by staff label instead to give the hands different note values, which is the
+    only way to get a hollow notehead and a filled one into the same event, a case the
+    plan's test matrix calls for by name.  The bar has to stay full either way, so a
+    hand given a shorter value is padded with a rest.
+    """
     return (ql, parts)
+
+
+def _ql_for(ql, label):
+    return ql.get(label, max(ql.values())) if isinstance(ql, dict) else ql
+
+
+def _ql_total(ql):
+    return max(ql.values()) if isinstance(ql, dict) else ql
 
 
 # Each case: staves are (hand, clef) top to bottom.  The staff label used to key
@@ -159,7 +174,10 @@ CASES = [
         "staves": [("right", "treble"), ("left", "bass")],
         "accidentals": [],
         "systems": [[
-            ev(2.0, right=["C5", "E5"], left=["C3", "G3"]),
+            # Hollow over filled in the same event: the plan's matrix asks for it, and
+            # it is the case that catches a hollow-versus-filled test done per event
+            # rather than per notehead.
+            ev({"right": 2.0, "left": 1.0}, right=["C5", "E5"], left=["C3", "G3"]),
             ev(1.0, right=["D5", "F5"], left=["D3", "A3"]),
             ev(1.0, right=["E5", "G5"], left=["E3", "B3"]),
             ev(4.0, right=["C5", "E5", "G5"], left=["C3", "G3"]),
@@ -256,7 +274,7 @@ CASES = [
         ]],
     },
     {
-        # Three adjacent steps: two of the three noteheads are displaced.
+        # Three adjacent steps, so one of the three noteheads is displaced sideways.
         "name": "cluster_seconds",
         "tags": ["grand-staff", "seconds", "clusters"],
         "fifths": 0,
@@ -354,10 +372,19 @@ def build_score(case):
             used = 0.0
             measures = []
             for ev_index, (ql, by_label) in enumerate(system):
-                obj = _make_object(by_label.get(label), ql)
+                mine = _ql_for(ql, label)
+                obj = _make_object(by_label.get(label), mine)
                 objects[sys_index][ev_index][label] = obj
                 measure.append(obj)
-                used += ql
+                used += mine
+                # A hand given a shorter note value than the event waits out the rest
+                # of it, so the bar still adds up and the next event still lines up
+                # across the staves.
+                pad = _ql_total(ql) - mine
+                if pad > 1e-9:
+                    from music21 import note as m21note
+                    measure.append(m21note.Rest(quarterLength=pad))
+                    used += pad
                 if used > bar_length + 1e-9:
                     raise ValueError("%s: event %d overflows the bar"
                                      % (case["name"], ev_index))
@@ -480,7 +507,7 @@ def measure_count(case):
     """Bars in the whole case; verovio draws one <g class="staff"> per bar per staff."""
     from music21 import meter
     bar = meter.TimeSignature(case["meter"]).barDuration.quarterLength
-    total = sum(ql for system in case["systems"] for ql, _ in system)
+    total = sum(_ql_total(ql) for system in case["systems"] for ql, _ in system)
     return int(round(total / bar))
 
 

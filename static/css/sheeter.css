@@ -142,11 +142,12 @@
 
 .crumbs { margin-bottom: 0.5rem; }
 
+/* No display here: it would outrank .js-only and leave these controls on screen, doing
+   nothing, when JavaScript is off.  ".js .stage-controls.js-only" below turns them on. */
 .stage-controls {
   position: sticky;
   top: 0;
   z-index: 5;
-  display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
   align-items: center;
@@ -333,6 +334,9 @@
   outline-offset: 1px;
   box-shadow: 0 0 0 6px rgba(31, 41, 55, 0.85);
 }
+/* Pico rings every focused button, which after a tap drew a stray box round the whole band. */
+.pill:focus:not(:focus-visible) { outline: none; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+.step-mark:focus:not(:focus-visible) { outline: none; box-shadow: none; }
 
 /* ---------- step bar ---------- */
 

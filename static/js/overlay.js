@@ -617,6 +617,7 @@
   var MAX_SCALE = 8;
   var STEP_MAX_SCALE = 4;
   var LEGIBLE_UNIT = 26;
+  var MARGIN = 12;
 
   function applyTransform() {
     var width = viewport.clientWidth;
@@ -668,37 +669,30 @@
     var k = width / imageWidth;
     var geom = systemGeometry(step.system);
 
-    var wanted = LEGIBLE_UNIT / Math.max(1, geom.unit * k);
-    var band = vh / Math.max(1, (geom.frameBottom - geom.frameTop) * k);
-
-    var boxLeft = null;
-    var boxRight = 0;
-    var boxTop = null;
-    var boxBottom = 0;
+    // Everything this step needs on screen, in stage pixels: its staves, and its own labels,
+    // which can reach above the staff when the chord sits over a high notehead.
+    var left = step.event.x * k;
+    var right = left;
+    var top = geom.frameTop * k;
+    var bottom = geom.frameBottom * k;
     for (var i = 0; i < pills.length; i++) {
       var box = pills[i].__box;
       if (!box || pills[i].dataset.step !== String(step.number)) { continue; }
-      boxLeft = boxLeft === null ? box.l : Math.min(boxLeft, box.l);
-      boxTop = boxTop === null ? box.t : Math.min(boxTop, box.t);
-      boxRight = Math.max(boxRight, box.r);
-      boxBottom = Math.max(boxBottom, box.b);
-    }
-    var byLabels = STEP_MAX_SCALE;
-    if (boxLeft !== null) {
-      byLabels = Math.min(vw / Math.max(1, boxRight - boxLeft), vh / Math.max(1, boxBottom - boxTop));
+      left = Math.min(left, box.l);
+      right = Math.max(right, box.r);
+      top = Math.min(top, box.t);
+      bottom = Math.max(bottom, box.b);
     }
 
-    var target = clamp(Math.min(wanted, band, byLabels), 1, STEP_MAX_SCALE);
-    var centreX = step.event.x * k;
-    var centreY = (geom.frameTop + geom.frameBottom) / 2 * k;
-    if (boxLeft !== null) {
-      centreX = (Math.min(centreX, boxLeft) + Math.max(centreX, boxRight)) / 2;
-    }
+    var wanted = LEGIBLE_UNIT / Math.max(1, geom.unit * k);
+    var fits = Math.min(vw / Math.max(1, right - left + MARGIN),
+                        vh / Math.max(1, bottom - top + MARGIN));
+    var target = clamp(Math.min(wanted, fits), 1, STEP_MAX_SCALE);
 
     glide();
     scale = Math.max(scale, target);
-    offsetX = vw / 2 - centreX * scale;
-    offsetY = vh / 2 - centreY * scale;
+    offsetX = vw / 2 - (left + right) / 2 * scale;
+    offsetY = vh / 2 - (top + bottom) / 2 * scale;
     applyTransform();
   }
 
