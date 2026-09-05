@@ -445,7 +445,8 @@ def detect_stems(mask_ns, band, unit):
             "y0": band[0] + ys.start - height / 2.0,
             "y1": band[0] + ys.stop + height / 2.0,
             "h": span,
-            "barline": True,       # decided once the noteheads are known
+            "kind": "barline",     # decided once the noteheads are known
+            "barline": True,
         })
     stems.sort(key=lambda s: s["x"])
     return stems
@@ -731,7 +732,7 @@ def group_by_stem(notes, stems, unit):
     notehead hangs off the same stem, and no amount of x clustering gets that right,
     because the displacement is exactly the gap between two separate notes.
     """
-    playing = [s for s in stems if not s["barline"]]
+    playing = [s for s in stems if s.get("kind") == "stem"]
     groups = {}
     loose = []
     for note in notes:
@@ -842,7 +843,7 @@ def duration_hint(notes, stems, beams, unit):
     xs = [n["x"] for n in notes]
     stem = None
     for candidate in stems:
-        if candidate["barline"]:
+        if candidate.get("kind") != "stem":
             continue
         if min(abs(candidate["x"] - x) for x in xs) <= unit * 0.95:
             stem = candidate
@@ -858,15 +859,27 @@ def duration_hint(notes, stems, beams, unit):
 
 
 def mark_barlines(stems, notes, unit):
-    """A vertical with no notehead beside it is a barline, not a stem.
+    """Sort the verticals into stems, barlines and neither.
 
-    Length does not separate the two: the stem of a five-note chord is longer than a
-    barline.  What a stem always has is a notehead touching it.
+    Length does not separate a stem from a barline: the stem of a five note chord is
+    longer than a barline.  Two things do.  A barline has no notehead beside it.  And a
+    stem sticks out past the noteheads it carries, which is what tells it apart from the
+    thick left and right walls of a chord of whole notes, since those survive the same
+    vertical erosion and are otherwise the right size and shape.
     """
     for stem in stems:
-        stem["barline"] = not any(abs(note["x"] - stem["x"]) <= unit * 0.95
-                                  and stem["y0"] - unit <= note["y"] <= stem["y1"] + unit
-                                  for note in notes)
+        attached = [note for note in notes
+                    if abs(note["x"] - stem["x"]) <= unit * 0.95
+                    and stem["y0"] - unit <= note["y"] <= stem["y1"] + unit]
+        if not attached:
+            stem["kind"] = "barline"
+        else:
+            lowest = max(note["y"] for note in attached)
+            highest = min(note["y"] for note in attached)
+            reaches = (stem["y1"] - lowest >= unit * 1.2
+                       or highest - stem["y0"] >= unit * 1.2)
+            stem["kind"] = "stem" if reaches else "other"
+        stem["barline"] = stem["kind"] == "barline"
     return stems
 
 

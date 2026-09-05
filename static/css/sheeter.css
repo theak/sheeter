@@ -7,6 +7,7 @@
   --sheeter-left: #a3541b;
   --sheeter-chord: #1f2937;
   --sheeter-ink: #ffffff;
+  --sheeter-live: #b45309;
   --label-size: 12px;
 }
 
@@ -85,6 +86,9 @@
 /* ---------- gallery ---------- */
 
 .gallery, .strip { list-style: none; padding: 0; margin: 0; }
+/* Pico sets "ul li{list-style:square}" straight on the item, which beats the value the list
+   above inherits down, so each card grew a square hanging off its left edge. */
+.gallery > li, .strip > li { list-style: none; }
 
 .gallery { display: grid; gap: 0.75rem; }
 .gallery > li { margin: 0; }
@@ -161,15 +165,17 @@
   font-size: 0.85rem;
 }
 .stage-controls input[type="range"] { width: 7rem; margin: 0; }
-.view-button[aria-pressed="true"] {
+.view-button[aria-pressed="true"], .mode-button[aria-pressed="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
   color: var(--pico-primary-inverse);
 }
-.view-button[aria-pressed="false"] {
+/* Not var(--pico-color): Pico redefines that inside a button to the inverse, which is white,
+   so the unpressed toggles rendered as empty boxes. */
+.view-button[aria-pressed="false"], .mode-button[aria-pressed="false"] {
   background: transparent;
   border-color: var(--pico-muted-border-color);
-  color: var(--pico-color);
+  color: var(--pico-primary);
 }
 
 .legend { margin: 0; font-size: 0.78rem; color: var(--pico-muted-color); }
@@ -204,6 +210,10 @@
   transform-origin: 0 0;
   will-change: transform;
 }
+.stage.gliding { transition: transform 0.28s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .stage.gliding { transition: none; }
+}
 .stage img {
   display: block;
   width: 100%;
@@ -233,7 +243,6 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
 }
-.pill:focus-visible { outline: 3px solid #ffffff; outline-offset: 1px; }
 .pill .tag {
   font-size: 0.8em;
   opacity: 0.85;
@@ -251,9 +260,98 @@
   z-index: 3;
 }
 
+/* Step mode: one event's labels, and a numbered marker on every event so the rest can be
+   reached.  The view filter rules come last so they still win over the selected pill. */
+.labels.mode-step .pill { display: none; }
+.labels.mode-step .pill.selected { display: flex; outline: none; }
+
 .labels.show-notes .pill.chord { display: none; }
 .labels.show-chords .pill.hand-r,
 .labels.show-chords .pill.hand-l { display: none; }
+
+.step-mark {
+  position: absolute;
+  display: none;
+  width: 26px;
+  margin: 0 0 0 -13px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 1;
+}
+.labels.mode-step .step-mark { display: block; }
+.step-mark::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(31, 41, 55, 0.5);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+.step-dot {
+  position: absolute;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  background: var(--sheeter-chord);
+  color: var(--sheeter-ink);
+  font-family: var(--pico-font-family-sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.step-mark[aria-current="true"] { z-index: 2; }
+.step-mark[aria-current="true"]::before {
+  width: 3px;
+  margin-left: -1.5px;
+  background: var(--sheeter-live);
+}
+.step-mark[aria-current="true"] .step-dot {
+  background: var(--sheeter-live);
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  font-size: 13px;
+  line-height: 24px;
+}
+.pill:focus-visible,
+.step-mark:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 6px rgba(31, 41, 55, 0.85);
+}
+
+/* ---------- step bar ---------- */
+
+.step-bar {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin: 0.5rem 0 0.2rem;
+}
+.step-bar.on { display: flex; }
+.step-bar button { width: auto; margin: 0; padding: 0.35rem 0.85rem; font-size: 0.9rem; }
+.step-group { display: none; flex: 1 1 15rem; align-items: center; gap: 0.5rem; }
+.step-bar.step-mode .step-group { display: flex; }
+.step-status {
+  flex: 1;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
 
 .stage-hint { font-size: 0.8rem; margin: 0.4rem 0 1rem; }
 

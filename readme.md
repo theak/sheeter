@@ -1,4 +1,3 @@
-
 # Sheeter: point your phone at sheet music and see what the notes are
 
 Take a photo of a line of sheet music and Sheeter draws the note names on top of the photo,
@@ -7,26 +6,101 @@ step by step, left hand and right hand, with a chord name where there is one.
 It is for people who know what a G minor 7 is but cannot read notation fast enough to find one
 on the page. If you sight-read fluently you do not need this.
 
-### How it works
+### How the reading works
 
-Two passes, and the first one always runs:
+Everything below is plain numpy and scipy. No model, no network, same answer every time.
 
-1. **Geometry.** Plain numpy and scipy. Find the staff lines from a row-darkness profile, measure
-the staff space, remove the lines, find the noteheads as connected components, and turn each
-notehead's vertical position into a diatonic step. Group noteheads that share an x position into
-an event. music21 names the chord. No model involved, no network, deterministic.
-2. **Claude.** Optional, and only runs if `ANTHROPIC_API_KEY` is set. The geometry reading plus the
-processed image go to Claude, which fixes the cases geometry is bad at: noteheads fused into one
-blob, deciding which note an accidental belongs to, and reading the clef and key signature. It
-corrects pitches, it does not invent notes at new positions.
+1. **Prepare.** Decode, honour EXIF rotation, downscale so the long side is 2200px, find the
+skew angle by rotating a small copy until the row-darkness profile spikes hardest, and threshold
+adaptively so a lighting ramp across the page does not eat half the ink.
+2. **Scale.** The commonest vertical black run on a page of music is the thickness of a staff
+line and the commonest vertical white run is the gap between two of them, so the staff space
+falls out of two histograms. Every threshold after this is written in staff spaces, so the
+reading does not care what resolution the photo is.
+3. **Staves.** Take every row that carries long horizontal ink as a hypothetical top line,
+sweep the line spacing, predict the other four lines and keep the guess only if all five
+predicted rows are inked across the same span. A photo
+has page margins, so a staff almost never spans the frame and asking which rows are dark all the
+way across does not work.
+4. **Noteheads.** Correlate a notehead-shaped outline against the image with the staff lines
+erased, and keep the peaks. It is a small bank of outlines rather than one, because a whole note
+is a different shape: wider, rounder and upright instead of leaning. Matching an outline rather
+than classifying connected components is what makes dense music work, since a stack of thirds is
+one blob but three separate peaks, and a hollow notehead nicked by staff-line removal is still
+one peak.
+5. **Pitch.** A notehead's vertical position against the five lines is a diatonic step, which
+becomes a pitch once you know the clef (read from the height of the glyph at the left edge) and
+the key signature (the run of accidentals right after it). Accidentals written in the bar are
+applied to the notes after them, ledger lines are confirmed before a note outside the staff is
+believed, and stems group noteheads into chords. music21 names the chord.
 
-The division of labour is the point. Precise vertical localization is easy for geometry and hard
-for a model; counting flats in a key signature is the other way around.
+### The Claude pass
 
-It gets things wrong. Bad lighting, heavy perspective, handwritten music, and anything denser than
-one system in the frame will all confuse it. Treat it as a reading aid and check it against the page.
-It expects printed music, one system at a time (one staff or one grand staff pair), treble and bass
-clefs, photographed reasonably flat.
+There is an optional second pass that sends the processed image, zoomed crops of each system, and
+the current reading to Claude, and asks for a corrected reading back. It does not run on every
+upload. `SHEETER_VERIFY` is `manual` by default, which puts a "Verify with Claude" button on the
+analysis page; `auto` runs it on upload, `off` hides it. It needs `ANTHROPIC_API_KEY` set and the
+`anthropic` package installed, and it adds five to twenty-five seconds.
+
+What comes back is also merged narrowly. A system is only overruled where the geometry admitted
+doubt: the system is cut off by the frame, or a clef or key signature was read with confidence
+under 0.9, or a notehead came in under 0.88. Everywhere else the pitches, clef and key go back to
+what the geometry measured and only the model's commentary is kept.
+
+That is not hedging, it is what the measurement said. On the fixture corpus at the time the two
+were compared, the geometry read 157 of 157 noteheads and the vision pass read 151. All six of
+its losses were notes on ledger lines, where counting staff positions by eye is exactly what a
+language model is worst at. So the model arbitrates where the geometry is unsure and comments
+where it is not.
+
+### How accurate it is
+
+The corpus is 15 cases, 273 noteheads, built by `tools/make_fixtures.py`: a music21 score with
+known pitches, engraved through Verovio, plus a synthesized phone-camera version of the same
+page. The pipeline reads 273/273 on the clean renders and 273/273 on the photos, with no spurious
+noteheads and the right number of events in both.
+
+Read that number with its limits attached:
+
+- The photos are synthesized, not real. They are the clean render rotated, keystoned, lit with a
+diagonal ramp, blurred, noised and saved as JPEG. That covers a lot of what a phone does to a
+page, but it is not a camera.
+- Every fixture comes from one engraver. Verovio's noteheads, its spacing and its line weights
+are all the pipeline has ever been asked to read.
+- So real photographs of real print will be harder, and the number to expect from them is not
+this one. If you want to know how it does on your music, try it on your music.
+
+To reproduce:
+
+```
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python tools/make_fixtures.py
+.venv/bin/python -m pytest tests/test_accuracy.py
+```
+
+### Known limits
+
+Things it genuinely cannot do, as opposed to does badly:
+
+- **Handwritten music.** Every shape it looks for is an engraved one.
+- **Rests.** They are not detected at all. A bar of rests in the left hand simply reads as no
+notes there, with nothing marking the silence.
+- **Rhythm.** A notehead gets `whole`, `half`, `quarter`, `eighth` or `shorter` from its shape
+and its stem, plus a dot if there is one. There are no ties, no tuplets, and nothing that adds up
+to a bar.
+- **Two voices in one staff.** Noteheads sharing an x position in a staff become one chord, so
+independent voices collapse into each other.
+- **A clef change mid-staff.** The clef is read once, from the left edge of each staff, and holds
+for the whole line.
+- **Music cropped at the frame edge.** It notices (`cut_off`, and a warning on the page) but it
+cannot recover what is not in the photo.
+- **HEIC.** Pillow cannot decode it, so an iPhone photo shared in its original format fails with
+the generic "could not read that image". Share it as a JPEG.
+
+It also expects one staff or one grand staff per system, treble and bass clefs, and a page
+photographed within about 6 degrees of level. A system of three or more staves, an organ score
+or a song with a piano part, is still read but gets no left and right hand labels. Treat the
+whole thing as a reading aid and check it against the page.
 
 ### Option 1: Run as docker image
 
@@ -47,7 +121,7 @@ services:
     volumes:
       - sheeter-data:/data
     environment:
-      # optional, enables the Claude correction pass
+      # optional, enables the Claude verify button
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     restart: unless-stopped
 
@@ -64,22 +138,24 @@ volumes:
 
 ### Usage
 
-Open http://localhost:5000 on your phone, take or pick a photo of one line of music, and wait a few
-seconds. You get the photo back with a label on each notehead and the chord spelled out under each
-step. Everything you have analysed before is on the home page, so you can jump back to it.
+Open http://localhost:5000 on your phone, take or pick a photo of one line of music, and wait a
+second or two. You get the photo back with a label on each notehead and the chord spelled out
+under each step. Everything you have analysed before is on the home page, so you can jump back to
+it.
 
 Uploads are content addressed by sha256, so re-uploading the same photo returns the analysis you
-already have instead of paying for it twice.
+already have instead of computing it twice.
 
 ### Configuration
 
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `SHEETER_DATA_DIR` | `<repo>/data`, and `/data` in the docker image | Where analyses are stored |
-| `ANTHROPIC_API_KEY` | unset | Enables the Claude correction pass. Without it you get the geometry reading only |
-| `SHEETER_VERIFY_MODEL` | `claude-sonnet-5` | Model for the vision pass that corrects pitches |
-| `SHEETER_SYMBOL_MODEL` | `claude-haiku-4-5` | Model for the text pass that names chords and writes the one-line explanation |
-| `PORT` | `5000` | Port for `tools/serve.sh`. The docker image always listens on 5000, remap it with `-p` |
+| `SHEETER_VERIFY` | `manual` | `manual` puts the verify button on the analysis page, `auto` runs the pass on every upload, `off` hides it. Anything else behaves like `manual` |
+| `ANTHROPIC_API_KEY` | unset | Required for the Claude pass. Without it there is no button and no pass, whatever `SHEETER_VERIFY` says |
+| `SHEETER_VERIFY_MODEL` | `claude-sonnet-5` | Model for the vision pass |
+| `SHEETER_SYMBOL_MODEL` | `claude-haiku-4-5` | Model for `verify.name_events`, the cheap text pass that upgrades chord symbols. Nothing in the app calls it right now, so this variable currently does nothing |
+| `PORT` | `5000` | Port to listen on, both for `tools/serve.sh` and in the docker image |
 
 ### Where things are stored
 
@@ -93,9 +169,9 @@ One directory per analysis, named after the first 12 hex characters of the sha25
 ```
 
 There is no database and no index file. The home page is built by scanning directories, and
-`analysis.json` is written last, so a half-written analysis is simply skipped. Deleting an analysis
-is `rm -rf` on its directory. The JSON is also served at `/a/<id>/analysis.json` if you want to do
-something else with it.
+`analysis.json` is written last, so a half-written analysis is simply skipped. Deleting an
+analysis is `rm -rf` on its directory. The JSON is also served at `/a/<id>/analysis.json` if you
+want to do something else with it.
 
 ### Development
 
@@ -104,9 +180,10 @@ something else with it.
 .venv/bin/python -m pytest
 ```
 
-The test fixtures are engraved from a table of pitches written out once in `tools/make_fixtures.py`,
-so the expected reading in `manifest.json` cannot drift from the image it describes. The images are
-gitignored and the manifest is not, so regenerate them after a clean checkout:
+The test fixtures are engraved from a table of pitches written out once in
+`tools/make_fixtures.py`, so the expected reading in `manifest.json` cannot drift from the image
+it describes. The images are gitignored and the manifest is not, so regenerate them after a clean
+checkout:
 
 ```
 .venv/bin/python tools/make_fixtures.py
@@ -118,11 +195,17 @@ through cffi, so install that too. On a mac:
 On Ubuntu:
 ```sudo apt install libcairo2```
 
-Every fixture is seeded from its case name, so two runs produce byte-identical output.
+Every fixture is seeded from its case name, so two runs produce byte-identical output. Without
+them the accuracy tests skip rather than fail.
+
+The docker image is built on `python:3.13-slim` rather than Alpine. Every direct dependency has a
+musl wheel, but `jiter` and `pydantic-core` underneath the anthropic SDK do not, and on Alpine pip
+quietly resolves back to a years-old SDK instead of failing.
 
 ### Credits
 
 - [Pico CSS](https://picocss.com) for the stylesheet, vendored in `static/css/`.
 - [music21](https://www.music21.org) for chord naming and pitch spelling.
+- [Verovio](https://www.verovio.org) for engraving the test fixtures.
 - The geometry and the split between the deterministic pass and the model pass follow a written
 plan rather than my own guessing, which is most of why it works at all.

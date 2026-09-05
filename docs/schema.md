@@ -32,7 +32,8 @@ arbitrary mobile scaling.
   "engine": {
     "geometry": "1",                  // geometry module version
     "verifier": "claude-sonnet-5",    // model id, or null if the vision pass did not run
-    "verified": true,                 // true only if a verifier response was applied
+    "verified": true,                 // a verifier response was applied.  On a system the
+                                      // geometry was sure about that may be commentary only
     "verifier_error": null            // human-readable reason the pass was skipped/failed
   },
 
@@ -52,7 +53,8 @@ arbitrary mobile scaling.
         {
           "index": 0,                 // index within this system, top to bottom
           "hand": "right",            // "right" | "left" | null (null = not a grand staff)
-          "clef": "treble",           // "treble" | "bass"
+          "clef": "treble",           // validator accepts treble|bass|alto|tenor; the
+                                      // geometry only ever emits treble or bass
           "clef_confidence": 0.92,
           "lines": [336.5, 395.1, 453.8, 512.4, 571.0],   // 5 y values, top to bottom
           "unit": 58.6,               // staff space in px = (lines[4]-lines[0]) / 4
@@ -88,7 +90,9 @@ arbitrary mobile scaling.
                   "x": 512.0, "y": 336.5,
                   "w": 34.0, "h": 26.0,
                   "hollow": true,
-                  "accidental": "flat",// explicit glyph found: flat|sharp|natural|null
+                  "accidental": "flat",// explicit glyph found next to this notehead:
+                                       // flat|sharp|natural|double-flat|double-sharp|null.
+                                       // The geometry reads the first three
                   "from_key": false,   // alteration came from the key signature
                   "ledger": 1,         // ledger lines used: +n above staff, -n below, 0 none
                   "step_err_px": 2.1,  // distance off the pitch grid; > 0.3*unit is suspect
@@ -98,7 +102,7 @@ arbitrary mobile scaling.
               ],
               "chord": {               // null when the part has a single note
                 "symbol": "Bbmaj9",
-                "common_name": "B-flat major ninth chord",
+                "common_name": "Bb-major-ninth chord",
                 "root": "Bb",
                 "bass": "Bb",
                 "quality": "major",
@@ -111,11 +115,14 @@ arbitrary mobile scaling.
             "names": ["Bb3", "F4", "C5", "D5", "F5", "A5"],
             "pretty": ["B♭3", "F4", "C5", "D5", "F5", "A5"],
             "symbol": "Bbmaj9",
-            "common_name": "B-flat major ninth chord",
+            "common_name": "Bb-major-ninth chord",
             "root": "Bb",
             "bass": "Bb",
             "quality": "major",
-            "roman": "I",              // relative to key_fifths major key, or null
+            "roman": "I",              // numeral in the key_fifths major key, or null.
+                                       // The naming pass may replace it with its own
+                                       // short label, so treat it as text
+            // music21's ordering of the chord's own tones, not parallel to "names"
             "intervals_from_bass": ["P1", "P5", "M9", "M3", "P5", "M7"]
           }
         }
@@ -138,3 +145,9 @@ arbitrary mobile scaling.
    `sheeter.schema.validate_analysis()` enforces this and is run on every write.
 5. Bumping `schema_version` means stored analyses are re-rendered from whatever they have;
    `store.load()` refuses to serve an analysis whose version it does not understand.
+6. The vision pass only overrules a system the geometry was unsure of.
+   `verify.geometry_is_sure()` is false when the system is `cut_off`, when a staff has
+   `clef_confidence` or `key_confidence` under 0.9, or when any note has `confidence`
+   under 0.88. On a sure system the clef, `key_fifths`, `parts` and `combined` are
+   restored from the geometry after the merge, so `changed` stays false there and only
+   `event.note` and the appended page-level line in `warnings` come from the model.

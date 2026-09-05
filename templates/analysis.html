@@ -172,11 +172,23 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <div id="labels" class="labels show-both" role="group" aria-label="Note labels on the photo"></div>
     </div>
   </div>
-  <p id="stage-empty" class="notice notice-warn" hidden></p>
-  <p class="muted stage-hint js-only">Tap a label to read that step. Pinch or use + and &minus; to
-  zoom; drag to move around; Fit puts it back.</p>
+  <div id="step-bar" class="step-bar">
+    <div class="control-group" role="group" aria-label="How many labels to show">
+      <button type="button" class="mode-button" data-mode="step">One step</button>
+      <button type="button" class="mode-button" data-mode="all">All labels</button>
+    </div>
+    <div class="step-group">
+      <button type="button" id="step-prev" class="secondary outline">&larr; Prev</button>
+      <p id="step-status" class="step-status" role="status"></p>
+      <button type="button" id="step-next" class="secondary outline">Next &rarr;</button>
+    </div>
+  </div>
 
-  <section id="detail" class="detail" aria-live="polite" hidden></section>
+  <p id="stage-empty" class="notice notice-warn" hidden></p>
+  <p class="muted stage-hint js-only">Tap a numbered dot to read that step, or use Prev and Next
+  and the arrow keys. Pinch or use + and &minus; to zoom; drag to move around; Fit puts it back.</p>
+
+  <section id="detail" class="detail" hidden></section>
 
   <section class="reading">
     <div class="reading-head">
