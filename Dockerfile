@@ -1,7 +1,7 @@
-# Debian rather than Alpine.  Every direct requirement has a musllinux wheel, but two
-# transitive ones do not: jiter publishes none at all, and pydantic-core publishes none
-# for musl either.  On Alpine pip does not fail, it quietly resolves back to anthropic
-# 0.26 and pydantic 1.x, which cannot run the strict tool schemas in sheeter/verify.py.
+# Debian rather than Alpine.  Every direct requirement has a musllinux wheel, but jiter,
+# which anthropic pulls in, publishes none at all.  On Alpine pip does not fail, it
+# quietly resolves back to an anthropic old enough that it cannot send the strict tool
+# schemas in sheeter/verify.py.
 FROM python:3.13-slim
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

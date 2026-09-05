@@ -60,15 +60,28 @@ known pitches, engraved through Verovio, plus a synthesized phone-camera version
 page. The pipeline reads 273/273 on the clean renders and 273/273 on the photos, with no spurious
 noteheads and the right number of events in both.
 
-Read that number with its limits attached:
+Three more suites sit alongside it, each written because the corpus could not say anything about
+what it covers:
+
+- `tests/test_fonts.py` renders the same music in all five music fonts Verovio ships, Petaluma's
+handwritten-style face included, and expects the same answer from each. It reads all five
+exactly. This is the one that says the reader has not simply memorised one engraver.
+- `tests/test_page.py` reads a ten bar page across several systems, which is what someone
+photographing a book actually points the camera at.
+- `tests/test_annotations.py` reads a jazz-textbook style page: whole note voicings under chord
+symbols with three lines of analysis printed between the staves. None of the text becomes a note.
+
+Read the numbers with their limits attached:
 
 - The photos are synthesized, not real. They are the clean render rotated, keystoned, lit with a
 diagonal ramp, blurred, noised and saved as JPEG. That covers a lot of what a phone does to a
 page, but it is not a camera.
-- Every fixture comes from one engraver. Verovio's noteheads, its spacing and its line weights
-are all the pipeline has ever been asked to read.
+- Every image is machine engraved, from one renderer, even across the five fonts.
 - So real photographs of real print will be harder, and the number to expect from them is not
 this one. If you want to know how it does on your music, try it on your music.
+
+Below about 18 pixels between staff lines the reading starts to miss notes, and the app says so
+on the page rather than quietly handing you a worse answer.
 
 To reproduce:
 
@@ -94,8 +107,6 @@ independent voices collapse into each other.
 for the whole line.
 - **Music cropped at the frame edge.** It notices (`cut_off`, and a warning on the page) but it
 cannot recover what is not in the photo.
-- **HEIC.** Pillow cannot decode it, so an iPhone photo shared in its original format fails with
-the generic "could not read that image". Share it as a JPEG.
 
 It also expects one staff or one grand staff per system, treble and bass clefs, and a page
 photographed within about 6 degrees of level. A system of three or more staves, an organ score
@@ -154,7 +165,6 @@ already have instead of computing it twice.
 | `SHEETER_VERIFY` | `manual` | `manual` puts the verify button on the analysis page, `auto` runs the pass on every upload, `off` hides it. Anything else behaves like `manual` |
 | `ANTHROPIC_API_KEY` | unset | Required for the Claude pass. Without it there is no button and no pass, whatever `SHEETER_VERIFY` says |
 | `SHEETER_VERIFY_MODEL` | `claude-sonnet-5` | Model for the vision pass |
-| `SHEETER_SYMBOL_MODEL` | `claude-haiku-4-5` | Model for `verify.name_events`, the cheap text pass that upgrades chord symbols. Nothing in the app calls it right now, so this variable currently does nothing |
 | `PORT` | `5000` | Port to listen on, both for `tools/serve.sh` and in the docker image |
 
 ### Where things are stored

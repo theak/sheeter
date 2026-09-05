@@ -11,6 +11,17 @@ import numpy as np
 from PIL import Image, ImageOps
 from scipy import ndimage
 
+try:
+    # iPhones shoot HEIC by default.  Safari converts on upload, but a file picked out
+    # of Files does not, and Pillow cannot read it on its own.  Optional, because it is
+    # the only dependency here that is not pure numerics.
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    HEIC_SUPPORTED = True
+except Exception:                                   # pragma: no cover
+    HEIC_SUPPORTED = False
+
 #: Long side of the image the pipeline actually works on.  Big enough that a
 #: photo of one system lands at a staff space of 20px or more (which is what the
 #: geometry needs), small enough to keep analysis under a couple of seconds.

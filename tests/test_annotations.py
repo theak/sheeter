@@ -10,6 +10,8 @@ The excerpt is modelled on a jazz harmony textbook page: whole note voicings und
 chord symbols, with three lines of prose sitting in the gap between the staves.
 """
 
+import os
+
 import pytest
 
 from sheeter import pipeline
@@ -107,3 +109,30 @@ def test_whole_notes_are_reported_as_whole_notes(doc):
     hints = set(part["duration_hint"]
                 for event in doc["systems"][0]["events"] for part in event["parts"])
     assert hints == {"whole"}
+
+
+def test_reads_an_iphone_heic_photo():
+    """iPhones shoot HEIC. Safari converts on upload but a file picked out of Files
+    does not, and Pillow cannot decode one without help, so this is the difference
+    between working and a blank error on the app's most likely input."""
+    import io
+
+    from PIL import Image
+
+    from sheeter import preprocess
+
+    if not preprocess.HEIC_SUPPORTED:
+        pytest.skip("pillow-heif is not installed")
+    source = os.path.join(os.path.dirname(__file__), "fixtures",
+                          "grand_2flats_photo.jpg")
+    if not os.path.isfile(source):
+        pytest.skip("run tools/make_fixtures.py first")
+    buf = io.BytesIO()
+    Image.open(source).convert("RGB").save(buf, format="HEIF", quality=88)
+
+    doc, _png = pipeline.analyze_bytes(buf.getvalue(), "IMG_0001.HEIC", "image/heic")
+    events = [e for s in doc["systems"] for e in s["events"]]
+    assert len(events) == 4
+    first = dict((part["hand"], [note["name"] for note in part["notes"]])
+                 for part in events[0]["parts"])
+    assert first == {"right": ["C5", "D5", "F5", "A5"], "left": ["Bb2", "F3"]}
