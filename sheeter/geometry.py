@@ -29,7 +29,8 @@ __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 # Every constant here is a multiple of the staff space, never a pixel count.
 NOTEHEAD_W = 1.30       # notehead width in staff spaces
 NOTEHEAD_H = 0.95       # notehead height
-RESPONSE_MIN = 0.72     # fraction of the ellipse template that must be inked
+RESPONSE_MIN = 0.72     # fraction of the notehead outline that must be inked
+FLANK_MIN = 0.55        # of that, how much of the left and right flanks must be inked
 GRID_TOLERANCE = 0.34   # how far off the half-space grid a notehead may sit
 STAFF_REACH = 6.0       # staff spaces above/below a staff that still belong to it
 
@@ -148,9 +149,11 @@ def _refine_line(lines_mask, y, x0, x1, thickness):
 def group_systems(staves, mask, unit):
     """Cluster staves into systems and decide which pairs are one grand staff.
 
-    Two signals: the vertical gap relative to the other gaps on the page, and whether
-    ink actually runs continuously between the two staves at the left edge, which is
-    what a brace or a shared barline looks like.
+    The reliable signal is whether ink actually runs from one staff to the next at the
+    left edge, which is what a brace or a shared barline looks like and what a system
+    break has none of.  Vertical gaps are the fallback, not the rule: on a real page the
+    gap between two systems is often barely larger than the gap inside a grand staff,
+    close enough that no ratio separates them, while the brace is unmistakable.
     """
     if not staves:
         return []
@@ -162,33 +165,44 @@ def group_systems(staves, mask, unit):
     joined = [_joined_at_left(mask, staves[i], staves[i + 1], unit)
               for i in range(len(staves) - 1)]
 
-    median_gap = float(np.median(gaps))
-    systems, current = [], [0]
-    for i, gap in enumerate(gaps):
-        # A break is a gap clearly larger than the typical one, with no connecting ink.
-        breaks = gap > max(median_gap * 1.6, unit * 5.0) and not joined[i]
+    if any(joined):
+        breaks = [not link for link in joined]
+    else:
+        # Nothing was braced, so either every staff stands alone, as on a lead sheet,
+        # or the brace was lost. Fall back to the shape of the gaps.
+        median_gap = float(np.median(gaps))
+        breaks = [gap > max(median_gap * 1.6, unit * 5.0) for gap in gaps]
         if len(staves) == 2:
-            breaks = gap > unit * 11.0 and not joined[i]
-        if breaks:
+            breaks = [gaps[0] > unit * 11.0]
+
+    systems, current = [], [0]
+    for index, breaking in enumerate(breaks):
+        if breaking:
             systems.append(current)
-            current = [i + 1]
+            current = [index + 1]
         else:
-            current.append(i + 1)
+            current.append(index + 1)
     systems.append(current)
     return systems
 
 
 def _joined_at_left(mask, upper, lower, unit):
-    """Is there continuous vertical ink between two staves near their left edge?"""
-    x0 = max(0, int(min(upper["x_range"][0], lower["x_range"][0]) - unit * 1.5))
-    x1 = int(min(mask.shape[1], x0 + unit * 3.0))
+    """Is there continuous vertical ink between two staves near their left edge?
+
+    That is a brace or a barline drawn through both, and it is what makes two staves one
+    grand staff.  The window reaches well left of where the staff lines were measured to
+    start: the brace sits outside them, and on an indented first system the measured
+    left edge can be a staff space or two right of where the joining stroke actually is.
+    """
+    left = min(upper["x_range"][0], lower["x_range"][0])
+    x0 = max(0, int(left - unit * 3.0))
+    x1 = int(min(mask.shape[1], left + unit * 1.5))
     y0 = int(round(upper["lines"][-1]))
     y1 = int(round(lower["lines"][0]))
-    if y1 <= y0 or x1 <= x0:
+    if y1 <= y0 + 2 or x1 <= x0:
         return False
     band = mask[y0:y1, x0:x1]
-    # A brace or a through barline inks every row of the gap in at least one column.
-    return bool((band.sum(axis=0) >= (y1 - y0) * 0.85).any())
+    return bool((band.sum(axis=0) >= (y1 - y0) * 0.8).any())
 
 
 # ------------------------------------------------------------------ glyph isolation
@@ -250,14 +264,18 @@ def notehead_kernels(unit):
     separates a hollow notehead from a filled one.
     """
     shapes = [(NOTEHEAD_W, NOTEHEAD_H, 0.36), (1.75, 1.02, 0.0)]
-    rims = []
+    rims, sides = [], []
     for width, height, shear in shapes:
         outer = ellipse_kernel(unit, width, height, shear).astype(bool)
         rim = outer & ~_shrink(outer, max(1, int(round(unit * 0.13))))
         rims.append(rim.astype(np.float32))
+        columns = np.arange(rim.shape[1])
+        edge = rim.shape[1] * 0.3
+        flank = (columns < edge) | (columns > rim.shape[1] - 1 - edge)
+        sides.append((rim & flank[None, :]).astype(np.float32))
     ordinary = ellipse_kernel(unit, NOTEHEAD_W, NOTEHEAD_H, 0.36).astype(bool)
     core = _shrink(ordinary, max(1, int(round(unit * 0.20))))
-    return rims, core.astype(np.float32)
+    return rims, sides, core.astype(np.float32)
 
 
 def _shrink(kernel, pixels):
@@ -417,6 +435,7 @@ def detect_accidentals(mask_ns, band, unit, x_from=0):
             "x": x_from + (comp["x0"] + comp["x1"]) / 2.0,
             "x0": x_from + comp["x0"], "x1": x_from + comp["x1"],
             "y": band[0] + comp["y0"] + offset,
+            "y0": band[0] + comp["y0"], "y1": band[0] + comp["y1"],
             "h": comp["h"],
         })
     found.sort(key=lambda a: a["x"])
@@ -570,29 +589,64 @@ def time_signature_edge(mask_ns, staff, band, unit, x_from):
     return int(x_from + best[0] + unit * 0.3), float(x_from + best[1])
 
 
-def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from):
+def _outline_response(region, erased, rims):
+    """How much of a notehead outline is inked at every point, ignoring erased lines.
+
+    A notehead centred in a staff space has its top and bottom rim lying along the two
+    lines that bound the space, so removing those lines takes a slice out of the rim and
+    the plain score drops about a tenth against a notehead sitting on a line.  Nobody
+    knows what was under the line, so it is not counted either way: the erased pixels
+    come out of the denominator instead of counting as blank.
+    """
+    best = None
+    for rim in rims:
+        total = float(rim.sum())
+        inked = _correlate(region, rim)
+        unknown = _correlate(erased, rim)
+        # Never let the denominator collapse: a template sitting mostly on erased ink
+        # would otherwise score on a sliver.
+        usable = np.maximum(1.0 - unknown, 0.6)
+        score = inked / usable
+        best = score if best is None else np.maximum(best, score)
+    return np.minimum(best, 1.0)
+
+
+def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
+                     accidentals=()):
     """Find noteheads by correlating a notehead outline against the cleaned mask.
 
     Matching an outline rather than classifying connected components means fused and
     fragmented noteheads both come out right: a stack of thirds is one blob but three
     correlation peaks, and a half note split by staff-line removal is still one peak.
+
+    *accidentals* are excluded by position.  A sharp is two vertical strokes crossed by
+    two horizontal ones, which is a notehead outline in every respect the template can
+    measure, and no shape test is going to separate them.  An accidental is always clear
+    of the notehead it belongs to, so ruling out its box costs nothing.
     """
     region = mask_ns[band[0]:band[1], :]
     if not region.any():
         return []
 
-    rims, core = notehead_kernels(unit)
-    response = _correlate(region, rims[0])
-    for extra in rims[1:]:
-        response = np.maximum(response, _correlate(region, extra))
+    rims, sides, core = notehead_kernels(unit)
+    erased = mask[band[0]:band[1], :] & ~region
+    response = _outline_response(region, erased, rims)
+    # The flanks of the outline are what separate a notehead from the gap between two
+    # stacked a third apart.  That gap has the bottom of one notehead above it and the
+    # top of the next below it, so the top and bottom arcs of the template are inked and
+    # the whole thing scores as well as a real note; what it never has is ink out to
+    # either side, because there is nothing there.
+    flanks = _outline_response(region, erased, sides)
     inside = _correlate(region, core)
 
-    # Suppress non-maxima out to just under one staff space vertically.  Noteheads a
-    # third apart, the closest two in a stack ever sit, are exactly one space apart and
-    # both survive; the midway point between them does not, and it needs suppressing,
-    # because the outline template lands its top arc on one notehead and its bottom arc
-    # on the other and scores well on a gap where there is no note at all.
-    nms_h = max(3, int(round(unit * 0.95)) | 1)
+    # The vertical suppression radius has to sit between half a staff space and a whole
+    # one.  Noteheads a third apart, the closest two ever stack, are a space apart and
+    # must both survive; the midpoint between them must not, because the outline
+    # template lands its top arc on one and its bottom arc on the other and scores well
+    # on a gap with no note in it.  A window of 1.2 spaces puts the radius at 0.6, clear
+    # of both.  Suppression needs the horizontal test too, or a notehead displaced
+    # sideways for a second, half a space up and over a space across, would be lost.
+    nms_h = max(3, int(round(unit * 1.2)) | 1)
     nms_w = max(3, int(round(unit * 0.85)) | 1)
     peaks = (response >= RESPONSE_MIN) & (
         response >= ndimage.maximum_filter(response, size=(nms_h, nms_w)) - 1e-6)
@@ -613,7 +667,13 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from):
         if not _ledger_ok(mask, cx, staff, unit, thickness, k):
             continue
 
+        if any(box["x0"] - unit * 0.15 <= cx <= box["x1"] + unit * 0.15
+               and box["y0"] - unit * 0.15 <= y <= box["y1"] + unit * 0.15
+               for box in accidentals):
+            continue
         iy, ix = int(round(cy)), int(round(cx))
+        if flanks[iy, ix] < FLANK_MIN:
+            continue
         score = float(response[iy, ix])
         filled_share = float(inside[iy, ix])
         # Snap to the grid: the pitch is what the staff says, not where the blob's
@@ -1038,7 +1098,8 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
         fifths, key_conf = read_key_signature(key_used, staff, clef)
         key_end = key_used[-1]["x1"] if key_used else member["clef_end"]
         time_end, _time_start = time_signature_edge(cleaned, staff, band, unit, key_end)
-        notes = detect_noteheads(mask, cleaned, staff, band, unit, thickness, time_end)
+        notes = detect_noteheads(mask, cleaned, staff, band, unit, thickness, time_end,
+                                 accidentals)
 
         bottom = pitches.CLEF_BOTTOM_LINE_STEP[clef]
         for note in notes:

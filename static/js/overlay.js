@@ -178,11 +178,13 @@
     // The numbered dot goes in the gap between the two staves of a grand staff, which is the
     // one part of a system that is reliably empty.  A lone staff gets it underneath.
     var dotY = bottom + unit * 1.6;
+    var below = unit * 2.4;
     if (staves.length > 1) {
       var upper = staves[0].lines || [];
       var lower = staves[1].lines || [];
       if (upper.length && lower.length) {
         dotY = (upper[upper.length - 1] + lower[0]) / 2;
+        below = unit * 0.8;
       }
     }
 
@@ -192,7 +194,7 @@
       unit: unit,
       dotY: clamp(dotY, unit, Math.max(unit, imageHeight - unit)),
       bandTop: clamp(top - unit * 0.8, 0, imageHeight),
-      bandBottom: clamp(bottom + unit * 0.8, 0, imageHeight),
+      bandBottom: clamp(bottom + below, 0, imageHeight),
       // What a zoom has to keep on screen: the staves plus room for a chord label above and
       // the numbered dot below.
       frameTop: clamp(top - unit * 3.2, 0, imageHeight),
@@ -295,12 +297,9 @@
 
   var EDGE = 3;
 
-  // Sets every visible pill's box in stage pixels and records it for the overlap test.  Pills
-  // are placed beside their notes and then clamped inside the stage, so nothing is ever cut off
-  // by the viewport edge; a chord symbol with no headroom above the staff drops below it.
-  // A chord symbol that has nowhere to go above the staff lands on its own hand labels, which
-  // hides the note names.  Slide it clear of them; the hand labels of a step are always laid
-  // out before its chord, so their boxes are already known.
+  // A chord symbol with no headroom above the staff lands on its own hand labels, which hides
+  // the note names.  Slide it clear of them; a step's hand labels are always laid out before
+  // its chord, so their boxes are already known.
   function dodge(pill, x, y, size, width) {
     var left = null;
     var right = 0;
@@ -318,6 +317,9 @@
     return x;
   }
 
+  // Sets every visible pill's box in stage pixels and records it for the overlap test.  Pills
+  // are placed beside their notes and then clamped inside the stage, so nothing is ever cut off
+  // by the viewport edge; a chord symbol with no headroom above the staff drops below it.
   function layoutLabels() {
     var width = labels.clientWidth;
     var height = labels.clientHeight;
@@ -434,7 +436,7 @@
       stepStatus.textContent = 'Step ' + selected + ' of ' + steps.length +
         (combined.symbol ? ' - ' + combined.symbol : '');
     } else {
-      stepStatus.textContent = steps.length + ' steps - pick one';
+      stepStatus.textContent = steps.length + (steps.length === 1 ? ' step' : ' steps') + ' - pick one';
     }
     if (stepPrev) { stepPrev.disabled = selected <= 1; }
     if (stepNext) { stepNext.disabled = selected >= steps.length; }
@@ -551,7 +553,9 @@
     updateStepBar();
     if (mode === 'step') {
       frameStep(step);
-      keepStageVisible(step);
+      // Not when the caller is already sending the reader to the detail panel: two smooth
+      // scrolls in one turn fight each other.
+      if (!scrollToDetail) { keepStageVisible(step); }
     }
     if (scrollToDetail) {
       detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -641,10 +645,10 @@
   }
 
   if (sizeRange) {
-    sizeRange.addEventListener('input', function () {
-      setSize(sizeRange.value);
-      reconsider();
-    });
+    // Relayout on every pixel of travel, but only reconsider the mode on release: bigger
+    // labels can start colliding, and flipping mode mid-drag is nauseating.
+    sizeRange.addEventListener('input', function () { setSize(sizeRange.value); });
+    sizeRange.addEventListener('change', reconsider);
   }
 
   // ---------------------------------------------------------------- zoom and pan
