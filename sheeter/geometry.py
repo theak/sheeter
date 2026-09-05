@@ -210,34 +210,46 @@ def remove_staff_lines(mask, lines_mask, thickness, unit):
     return mask & ~(bridged & thin)
 
 
-def ellipse_kernel(unit, scale=1.0):
-    """A filled, slightly tilted ellipse the size of a notehead."""
-    kh = max(3, int(round(unit * NOTEHEAD_H * scale)) | 1)
-    kw = max(3, int(round(unit * NOTEHEAD_W * scale)) | 1)
+def ellipse_kernel(unit, width=NOTEHEAD_W, height=NOTEHEAD_H, shear=0.36):
+    """A filled ellipse the size of a notehead, optionally leaning like an engraved one.
+
+    Half and quarter noteheads lean about 20 degrees, and shearing the template to
+    match gains several points of response, which matters at the floor we accept.
+    """
+    kh = max(3, int(round(unit * height)) | 1)
+    kw = max(3, int(round(unit * width)) | 1)
     yy, xx = np.mgrid[0:kh, 0:kw]
     cy, cx = (kh - 1) / 2.0, (kw - 1) / 2.0
-    # Engraved noteheads lean about 20 degrees; shearing the ellipse matches them far
-    # better than an axis-aligned one, which matters at the response floor we use.
-    sheared_y = (yy - cy) + (xx - cx) * 0.36
+    sheared_y = (yy - cy) + (xx - cx) * shear
     ellipse = (sheared_y / (kh / 2.0)) ** 2 + ((xx - cx) / (kw / 2.0)) ** 2 <= 1.0
     return ellipse.astype(np.float32)
 
 
 def notehead_kernels(unit):
-    """``(rim, core)`` templates.
+    """Templates to match noteheads against, plus the core used to tell them apart.
 
-    *rim* is the outline of a notehead.  It is inked for a half note and for a quarter
-    note alike, so one correlation finds both, and losing a slice of the outline to
-    staff-line removal costs proportionally rather than catastrophically.  Filling the
-    shape first and matching a solid ellipse instead, which is the obvious approach,
-    fails the moment a rim is nicked: the hole leaks and the fill does nothing.
+    Returns ``(rims, core)`` where *rims* is a small bank of outlines.  Matching the
+    outline rather than the filled shape is what lets one pass find both a half note
+    and a quarter note, and it degrades gracefully when staff-line removal nicks a rim:
+    the score drops in proportion instead of collapsing, which is what happens if you
+    fill the shape first and the fill leaks through the gap.
 
-    *core* is the inside, and how much of it is inked is what tells half from quarter.
+    The bank exists because a whole note is not the same shape as the others.  It is
+    noticeably wider, rounder and upright rather than leaning, so the ordinary template
+    scores it too low to keep.
+
+    *core* is the inside of an ordinary notehead, and how much of it is inked is what
+    separates a hollow notehead from a filled one.
     """
-    outer = ellipse_kernel(unit, 1.0).astype(bool)
-    core = _shrink(outer, max(1, int(round(unit * 0.20))))
-    rim = outer & ~_shrink(outer, max(1, int(round(unit * 0.13))))
-    return rim.astype(np.float32), core.astype(np.float32)
+    shapes = [(NOTEHEAD_W, NOTEHEAD_H, 0.36), (1.75, 1.02, 0.0)]
+    rims = []
+    for width, height, shear in shapes:
+        outer = ellipse_kernel(unit, width, height, shear).astype(bool)
+        rim = outer & ~_shrink(outer, max(1, int(round(unit * 0.13))))
+        rims.append(rim.astype(np.float32))
+    ordinary = ellipse_kernel(unit, NOTEHEAD_W, NOTEHEAD_H, 0.36).astype(bool)
+    core = _shrink(ordinary, max(1, int(round(unit * 0.20))))
+    return rims, core.astype(np.float32)
 
 
 def _shrink(kernel, pixels):
@@ -452,8 +464,16 @@ def _ledger_ok(mask, x, staff, unit, thickness, k):
     if -1 <= k <= 9:
         return True
     nearest = k if k % 2 == 0 else (k - 1 if k > 0 else k + 1)
+    # Ledger lines come in an unbroken run out from the staff, so check the whole run.
+    # A single dark smudge at the right height, which is what a photo's edge or a stray
+    # mark looks like, cannot fake five of them.
+    rungs = range(10, nearest + 1, 2) if nearest > 0 else range(-2, nearest - 1, -2)
+    return all(_ledger_row_ok(mask, x, staff, unit, thickness, rung) for rung in rungs)
+
+
+def _ledger_row_ok(mask, x, staff, unit, thickness, k):
     y = pitches.step_to_y(
-        pitches.CLEF_BOTTOM_LINE_STEP["treble"] + nearest, staff["lines"], "treble")
+        pitches.CLEF_BOTTOM_LINE_STEP["treble"] + k, staff["lines"], "treble")
     reach = max(1, int(round(thickness * 1.4)))
     lo, hi = int(round(y)) - reach, int(round(y)) + reach + 1
     if lo < 0 or hi > mask.shape[0]:
@@ -523,8 +543,10 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from):
     if not region.any():
         return []
 
-    rim, core = notehead_kernels(unit)
-    response = _correlate(region, rim)
+    rims, core = notehead_kernels(unit)
+    response = _correlate(region, rims[0])
+    for extra in rims[1:]:
+        response = np.maximum(response, _correlate(region, extra))
     inside = _correlate(region, core)
 
     nms_h = max(3, int(round(unit * 0.75)) | 1)
@@ -592,10 +614,11 @@ def key_signature_run(accidentals, clef_end, unit):
     before it.  Walk right from the clef while the glyphs keep coming at signature
     spacing and keep being the same kind.
     """
-    run, cursor = [], clef_end
+    run, cursor, spacing = [], clef_end, unit * 2.6
     for acc in accidentals:
-        if acc["x0"] - cursor > unit * 1.7:
+        if acc["x0"] - cursor > spacing:
             break
+        spacing = unit * 1.8      # the first sits clear of the clef, the rest are tight
         if run and acc["kind"] != run[0]["kind"]:
             break
         if acc["kind"] == "natural" and not run:
@@ -733,6 +756,36 @@ def group_by_stem(notes, stems, unit):
         cluster.sort(key=lambda n: -n["y"])
     clusters.sort(key=lambda c: min(n["x"] for n in c))
     return clusters
+
+
+TIME_SIGNATURE_STEPS = (2, 6)   # the two staff positions digits are centred on
+
+
+def drop_time_signature(per_staff, key_ends, unit):
+    """Remove a leading cluster that is a time signature read as noteheads.
+
+    The shape test on the glyphs themselves is the first line of defence, and on a
+    clean render it is enough.  A blurred photo fuses the two digits into a blob that
+    is neither one digit nor two, the shape test lets it through, and its outline
+    scores well enough against a notehead to be read as one or two notes.
+
+    Their position does not blur.  Time signature digits are centred on the two staff
+    positions below and above the middle line, they sit in the slot immediately after
+    the key signature, and they are never the only thing on the staff.  A cluster that
+    is all three of those is a time signature.
+    """
+    for position, clusters in per_staff.items():
+        if len(clusters) < 2:
+            continue            # never delete the only thing found
+        cluster = clusters[0]
+        if not set(note["k"] for note in cluster) <= set(TIME_SIGNATURE_STEPS):
+            continue
+        x = float(np.mean([note["x"] for note in cluster]))
+        if x - key_ends.get(position, 0.0) > unit * 4.0:
+            continue            # too far right to be in the time signature's slot
+        if x > min(float(np.mean([n["x"] for n in c])) for c in clusters[1:]) - unit:
+            continue
+        per_staff[position] = clusters[1:]
 
 
 def align_across_staves(per_staff, unit):
@@ -915,7 +968,7 @@ def _assign_clefs(members):
 
 def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thickness,
                  system_index, width, height, warnings):
-    per_staff, staff_docs = {}, []
+    per_staff, staff_docs, key_ends = {}, [], {}
     for position, member in enumerate(members):
         staff, band, clef = member["staff"], member["band"], member["clef"]
         stems = detect_stems(cleaned, band, unit)
@@ -954,6 +1007,7 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
                 "missing. Retake it with a little margin around the music.")
 
         per_staff[position] = group_by_stem(notes, stems, unit)
+        key_ends[position] = key_end
         member["stems"], member["beams"] = stems, beams
         staff_docs.append({
             "index": position,
@@ -967,6 +1021,10 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
             "key_confidence": round(float(key_conf), 2),
             "cut_off": bool(cut_off),
         })
+
+    drop_time_signature(per_staff, key_ends, unit)
+
+    _reconcile_keys(staff_docs, per_staff, members)
 
     events = []
     for index, entries in enumerate(align_across_staves(per_staff, unit)):
@@ -1010,6 +1068,29 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
         "staves": staff_docs,
         "events": events,
     }
+
+
+def _reconcile_keys(staff_docs, per_staff, members):
+    """Make the staves of one system agree on the key signature.
+
+    Both staves of a grand staff always carry the same key, so a disagreement means one
+    of them lost an accidental to blur or to a glyph running into the clef.  Trusting
+    the staff that read its signature most confidently recovers the other one, and this
+    is the single cheapest accuracy win available on a photograph.
+    """
+    if len(staff_docs) < 2:
+        return
+    best = max(staff_docs, key=lambda d: (d["key_confidence"], abs(d["key_fifths"])))
+    if best["key_confidence"] < 0.9:
+        return
+    for position, doc in enumerate(staff_docs):
+        if doc["key_fifths"] == best["key_fifths"]:
+            continue
+        doc["key_fifths"] = best["key_fifths"]
+        doc["key_confidence"] = round(best["key_confidence"] - 0.15, 2)
+        notes = [note for cluster in per_staff.get(position, []) for note in cluster]
+        apply_alterations(notes, best["key_fifths"],
+                          [s["x"] for s in members[position]["stems"] if s["barline"]])
 
 
 def _note_doc(note):

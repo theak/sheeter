@@ -133,10 +133,8 @@ def _new_client():
 
 
 def _reason(exc):
-    text = " ".join(str(exc).split()) or exc.__class__.__name__
-    if len(text) > 160:
-        text = text[:157] + "..."
-    return "%s: %s" % (exc.__class__.__name__, text)
+    text = "%s: %s" % (exc.__class__.__name__, " ".join(str(exc).split()))
+    return text[:157] + "..." if len(text) > 160 else text
 
 
 def _skipped(doc, reason):
@@ -400,7 +398,9 @@ def _reread(system, staff):
     """Re-derive every pitch on *staff* from its y, under the current clef and key.
 
     A corrected clef or key signature invalidates the reading of every notehead
-    on the staff, not only the ones the model bothered to mention.
+    on the staff, not only the ones the model bothered to mention.  Notes whose
+    name moves are marked changed: the verifier did change them, by way of the
+    clef, and the overlay should say so.
     """
     alterations = pitches.key_alterations(staff["key_fifths"])
     for _event, part in _staff_notes(system, staff["index"]):
@@ -449,6 +449,14 @@ def _apply_names(part, names, staff, event):
         return
     parsed = [_parse_pitch(n) for n in names]
     alterations = pitches.key_alterations(staff["key_fifths"])
+
+    # Our note lists run low to high, but a model reading a chord off the page
+    # naturally reads it top to bottom (the plan's own example response does).
+    # Slot i has to mean the same notehead on both sides or the overlay lands on
+    # the wrong line, so an entirely descending answer is turned round.
+    midis = [pitches.step_to_midi(*p) for p in parsed if p is not None]
+    if len(midis) == len(parsed) > 1 and all(a > b for a, b in zip(midis, midis[1:])):
+        parsed.reverse()
 
     if len(parsed) == len(part["notes"]):
         notes = []
@@ -506,29 +514,43 @@ def _apply_events(system, payload_events, staves):
             _apply_names(part, part_entry.get("notes"), staff, event)
 
 
-def _rename_chords(system):
-    """Re-run naming over the system so symbols match the pitches again."""
+def _rename_chords(system, before):
+    """Re-run naming wherever the pitches moved, and leave the rest alone.
+
+    An untouched event keeps the symbol the pipeline gave it.  Renaming the whole
+    system would reseed ``name_chord``'s prev_names chain from event 0, which can
+    change a symbol nothing in the response asked about.
+    """
     staves = dict((s["index"], s) for s in system["staves"])
     key = system["staves"][0]["key_fifths"] if system["staves"] else 0
+    was = dict(((e["index"], p["staff"]), [n["name"] for n in p["notes"]])
+               for e in before["events"] for p in e["parts"])
     previous = {}
     for event in system["events"]:
+        moved = False
         for part in event["parts"]:
             part["notes"].sort(key=lambda n: n["midi"])
             names = [n["name"] for n in part["notes"]]
-            staff = staves.get(part["staff"])
-            part["chord"] = naming.name_chord(
-                names, staff["key_fifths"] if staff else key, previous.get(part["staff"])
-            )
+            if names != was.get((event["index"], part["staff"])):
+                staff = staves.get(part["staff"])
+                part["chord"] = naming.name_chord(
+                    names, staff["key_fifths"] if staff else key,
+                    previous.get(part["staff"]),
+                )
+                moved = True
             previous[part["staff"]] = names
-        pooled = sorted(
-            (n for p in event["parts"] for n in p["notes"]), key=lambda n: n["midi"]
-        )
-        event["combined"] = naming.name_combined([n["name"] for n in pooled], key)
+        if moved:
+            pooled = sorted(
+                (n for p in event["parts"] for n in p["notes"]), key=lambda n: n["midi"]
+            )
+            event["combined"] = naming.name_combined([n["name"] for n in pooled], key)
 
 
 def _merge(doc, payload):
     out = copy.deepcopy(doc)
     by_index = dict((s["index"], s) for s in out["systems"])
+    # out is a copy, so doc still holds each system as it was before the merge.
+    before = dict((s["index"], s) for s in doc["systems"])
     for entry in payload.get("systems") or []:
         if not isinstance(entry, dict):
             continue
@@ -539,7 +561,7 @@ def _merge(doc, payload):
             _reread(system, staff)
         _apply_events(system, entry.get("events"),
                       dict((s["index"], s) for s in system["staves"]))
-        _rename_chords(system)
+        _rename_chords(system, before[system["index"]])
 
     notes = payload.get("system_notes")
     if isinstance(notes, str) and notes.strip():

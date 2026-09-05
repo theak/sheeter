@@ -3,6 +3,7 @@
 No network and no API key: every call goes through a fake client object.
 """
 
+import base64
 import copy
 import io
 import json
@@ -62,6 +63,9 @@ def _system(index, top):
                         _part(left, ["C3"], 200)]),
         _event(1, 400, [_part(right, ["F4", "A4"], 400),
                         _part(left, ["F2"], 400)]),
+        # One pitch class in both hands, so combined and chord are both null.
+        _event(2, 600, [_part(right, ["F4"], 600),
+                        _part(left, ["F3"], 600)]),
     ]
     return {
         "index": index, "y_range": [float(top - 40), float(top + 320)],
@@ -220,8 +224,6 @@ def test_wide_page_sends_crops_and_honours_the_cap():
 
 def test_images_are_downscaled_to_the_tier_limit(doc):
     content = verify.build_request(doc, make_png(4000, 3000))["messages"][0]["content"]
-    import base64
-
     for block in content:
         if block["type"] != "image":
             continue
@@ -267,15 +269,37 @@ def test_apply_correction_renames_the_chord(doc):
     assert out["systems"][0]["events"][0]["parts"][0]["chord"]["symbol"] == "Em"
 
 
-def test_apply_correction_resorts_a_descending_list(doc):
+def test_untouched_events_keep_their_symbols(doc):
+    before = copy.deepcopy(doc)
     out = verify.apply_correction(doc, correction([
         {"index": 0, "staves": [], "events": [
             {"index": 0, "confidence": 0.9, "note": "",
-             "parts": [{"staff": 0, "notes": ["C5", "G4", "E4"]}]},
+             "parts": [{"staff": 0, "notes": ["E4", "G4", "B4"]}]},
+        ]},
+    ]))
+    assert out["systems"][0]["events"][0]["combined"] != \
+        before["systems"][0]["events"][0]["combined"]
+    for index in (1, 2):
+        assert out["systems"][0]["events"][index] == \
+            before["systems"][0]["events"][index]
+
+
+def test_a_top_down_answer_lands_on_the_right_noteheads(doc):
+    staff = doc["systems"][0]["staves"][0]
+    out = verify.apply_correction(doc, correction([
+        {"index": 0, "staves": [], "events": [
+            {"index": 0, "confidence": 0.9, "note": "",
+             "parts": [{"staff": 0, "notes": ["D5", "G4", "F4"]}]},
         ]},
     ]))
     notes = out["systems"][0]["events"][0]["parts"][0]["notes"]
+    assert [n["name"] for n in notes] == ["F4", "G4", "D5"]
     assert [n["midi"] for n in notes] == sorted(n["midi"] for n in notes)
+    # The y values are geometry's and must not have been shuffled with them.
+    assert [n["y"] for n in notes] == [
+        pitches.step_to_y(pitches.parse_name(n)[0], staff["lines"], staff["clef"])
+        for n in ["E4", "G4", "C5"]
+    ]
     schema.validate_analysis(out)
 
 
@@ -498,11 +522,13 @@ def test_name_events_never_raises(doc):
     assert verify.name_events(doc, client=client) is doc
 
 
-def test_name_events_leaves_single_note_events_alone(doc):
-    single = doc["systems"][0]["events"][0]["parts"][1]
-    assert len(single["notes"]) == 1
+def test_name_events_leaves_an_unnameable_event_alone(doc):
+    assert doc["systems"][0]["events"][2]["combined"] is None
     client = FakeClient(Response([Block(verify.SYMBOL_TOOL, {"events": [
-        {"system": 0, "index": 1, "symbol": "F", "role": "IV", "note": ""},
+        {"system": 0, "index": 2, "symbol": "F", "role": "IV",
+         "note": "Both hands land on F."},
     ]})]))
     out = verify.name_events(doc, client=client)
+    assert out["systems"][0]["events"][2]["combined"] is None
+    assert out["systems"][0]["events"][2]["note"] == "Both hands land on F."
     schema.validate_analysis(out)

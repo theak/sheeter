@@ -1,0 +1,170 @@
+<%
+usage_count = usage.get("count", 0)
+usage_mb = usage.get("bytes", 0) / 1048576.0
+%>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Sheeter</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pico.min.css">
+<link rel="stylesheet" href="/static/css/sheeter.css">
+</head>
+<body>
+<main class="container" id="drop-area">
+
+  <header class="masthead">
+    <h1>Sheeter</h1>
+    <p class="tagline">Take a photo of some sheet music. Sheeter reads the notes off it and
+    writes their names on your photo, one label per chord for each hand.</p>
+  </header>
+
+% if error:
+  <p class="notice notice-error" role="alert">{{error}}</p>
+% end
+
+  <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+    <label class="capture-button" for="capture-input">
+      <span class="capture-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h2L9 4h6l1.5 2h2A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/>
+          <circle cx="12" cy="13" r="3.6"/>
+        </svg>
+      </span>
+      <span class="capture-text">Take a photo</span>
+      <span class="capture-sub">Point the camera at one system or one page</span>
+    </label>
+    <input type="file" id="capture-input" class="hidden-input" accept="image/*" capture="environment">
+
+    <p class="pick-file">
+      <label for="file-input">or choose a file from this device</label>
+      <input type="file" id="file-input" name="file" accept="image/*">
+    </p>
+
+    <p id="submit-row"><button type="submit">Analyse this photo</button></p>
+  </form>
+
+  <div id="loader" class="loader" hidden>
+    <div class="spinner" aria-hidden="true"></div>
+    <p><strong>Reading <span id="loader-name">your photo</span>.</strong></p>
+    <p class="muted">Finding the staff lines, measuring where each notehead sits, working out the
+    pitches and naming the chords. A few seconds.</p>
+    <p><button type="button" class="secondary outline" id="cancel-button">Cancel</button></p>
+  </div>
+
+% if items:
+  <section class="gallery-section">
+    <h2>Saved readings</h2>
+    <ul class="gallery">
+%   for item in items:
+      <li>
+        <a href="/a/{{item['id']}}">
+          <img class="g-thumb" src="{{item['thumb_url']}}" alt="" loading="lazy" decoding="async">
+          <span class="g-body">
+            <span class="g-title">{{item['title']}}</span>
+%           if item['summary']:
+            <span class="g-summary">{{item['summary']}}</span>
+%           else:
+            <span class="g-summary muted">no chords read</span>
+%           end
+            <span class="g-meta">
+              <span>{{(item['created_at'] or '')[:10] or 'undated'}}</span>
+              <span>{{item['note_count']}} notes</span>
+              <span>{{item['event_count']}} steps</span>
+%             if item['verified']:
+              <span class="badge badge-ok">checked by Claude</span>
+%             else:
+              <span class="badge">geometry only</span>
+%             end
+            </span>
+          </span>
+        </a>
+      </li>
+%   end
+    </ul>
+  </section>
+% else:
+  <section class="empty-state">
+    <h2>Nothing saved yet</h2>
+    <p>Sheeter is for people who know their note names but cannot sight-read. Photograph a line of
+    music and it tells you, step by step, which notes are in the chord under each hand.</p>
+    <p><strong>What makes a good photo:</strong></p>
+    <ul>
+      <li>One system, or one page. Not a whole open book.</li>
+      <li>Hold the page flat and the phone parallel to it. Sheeter straightens small tilts, not curl.</li>
+      <li>Fill the frame with the music, and keep your shadow off it.</li>
+    </ul>
+  </section>
+% end
+
+  <section class="about">
+    <h2>What this does</h2>
+    <p>Sheeter finds the staff lines in your photo, measures where every notehead sits against
+    them, and turns those positions into pitches using the clef and key signature it reads off
+    the front of each staff. Then it names the chord each group of notes makes.</p>
+    <p>If an Anthropic API key is configured, Claude looks at the photo alongside that reading and
+    corrects it. Every analysis says plainly which of the two you are looking at.</p>
+    <p>It is not a transcription tool. There is no rhythm beyond hollow-or-filled, and no output
+    file. It answers one question: what notes am I looking at here?</p>
+  </section>
+
+  <footer class="foot">
+    <p class="muted">{{usage_count}} saved {{'reading' if usage_count == 1 else 'readings'}},
+    {{'%.1f' % usage_mb}} MB on disk.</p>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('upload-form');
+  var fileInput = document.getElementById('file-input');
+  var captureInput = document.getElementById('capture-input');
+  var loader = document.getElementById('loader');
+  var loaderName = document.getElementById('loader-name');
+  var dropArea = document.getElementById('drop-area');
+  var submitRow = document.getElementById('submit-row');
+
+  submitRow.hidden = true;
+
+  function start() {
+    var chosen = fileInput.files && fileInput.files[0];
+    if (!chosen) { return; }
+    loaderName.textContent = chosen.name;
+    loader.hidden = false;
+    form.hidden = true;
+    form.submit();
+  }
+
+  fileInput.addEventListener('change', start);
+
+  captureInput.addEventListener('change', function () {
+    if (!captureInput.files || !captureInput.files.length) { return; }
+    fileInput.files = captureInput.files;
+    start();
+  });
+
+  document.getElementById('cancel-button').addEventListener('click', function () {
+    window.location.reload();
+  });
+
+  function stop(e) { e.preventDefault(); e.stopPropagation(); }
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (name) {
+    dropArea.addEventListener(name, stop, false);
+    document.body.addEventListener(name, stop, false);
+  });
+  dropArea.addEventListener('dragenter', function () { dropArea.classList.add('dragging'); });
+  dropArea.addEventListener('dragleave', function () { dropArea.classList.remove('dragging'); });
+  dropArea.addEventListener('drop', function (e) {
+    dropArea.classList.remove('dragging');
+    if (!e.dataTransfer || !e.dataTransfer.files.length) { return; }
+    fileInput.files = e.dataTransfer.files;
+    start();
+  }, false);
+}());
+</script>
+</body>
+</html>
