@@ -514,37 +514,60 @@ def time_signature_edge(mask_ns, staff, band, unit, x_from):
     """Right edge of the time signature, or *x_from* if there is none.
 
     Digits score well enough against a notehead outline to be read as notes, so they
-    have to be excluded by position rather than by shape.  A time signature is the
-    first solid glyph after the key signature, it is centred on the middle line, and
-    its two digits are as often fused into one blob as they are separate, so accept
-    either a single tall component or a pair.
+    have to be excluded by position rather than left to the shape test.  What identifies
+    them is structure, not size: two glyphs of the same size at the same x, straddling
+    the middle line symmetrically, in the slot right after the key signature.  Their
+    proportions and ink density vary a lot between music fonts and under a camera, so
+    leaning on those instead makes this work for one font and fail for the next.
+
+    Engravers also fuse the two digits into one blob at small sizes, so a single tall
+    component centred on the middle line counts as well.
     """
     x_to = int(min(mask_ns.shape[1], x_from + unit * 8))
     if x_to <= x_from + unit:
         return x_from, None
     middle = (staff["lines"][0] + staff["lines"][-1]) / 2.0
-    best = None
-    for comp in _components(mask_ns[band[0]:band[1], x_from:x_to], int(unit * unit * 0.12)):
-        if not (unit * 1.4 <= comp["h"] <= unit * 5.0):
+
+    glyphs = []
+    for comp in _components(mask_ns[band[0]:band[1], x_from:x_to], int(unit * unit * 0.10)):
+        if not (unit * 1.3 <= comp["h"] <= unit * 5.2):
             continue
-        if not (unit * 0.75 <= comp["w"] <= unit * 2.4):
+        if not (unit * 0.5 <= comp["w"] <= unit * 2.8):
             continue
-        # A sharp is about three and a half times as tall as it is wide, a flat and a
-        # natural more; a digit, or two fused into one blob, is under three.
-        if comp["h"] / float(comp["w"]) > 3.0:
-            continue
-        if comp["size"] / float(comp["w"] * comp["h"]) < 0.40:
-            continue        # digits are solid; a stack of noteheads is mostly air
-        centre = band[0] + (comp["y0"] + comp["y1"]) / 2.0
-        if abs(centre - middle) > unit * 1.1:
-            continue
+        if comp["h"] / float(comp["w"]) > 3.2:
+            continue        # taller and narrower than this is an accidental
         if comp["x0"] > unit * 3.5:
             continue        # a time signature follows the key signature immediately
-        if best is None or comp["x0"] < best["x0"]:
-            best = comp
+        centre = band[0] + (comp["y0"] + comp["y1"]) / 2.0
+        glyphs.append({
+            "x0": comp["x0"], "x1": comp["x1"], "h": comp["h"],
+            "cx": (comp["x0"] + comp["x1"]) / 2.0,
+            "offset": (centre - middle) / unit,
+        })
+
+    best = None
+    for upper in glyphs:
+        if upper["offset"] > -0.5:
+            continue
+        for lower in glyphs:
+            if lower is upper or lower["offset"] < 0.5:
+                continue
+            if abs(upper["cx"] - lower["cx"]) > unit * 0.9:
+                continue
+            if abs(upper["offset"] + lower["offset"]) > unit * 0.02 + 0.9:
+                continue        # the two must straddle the middle line evenly
+            edge = max(upper["x1"], lower["x1"])
+            start = min(upper["x0"], lower["x0"])
+            if best is None or start < best[1]:
+                best = (edge, start)
+    if best is None:
+        for glyph in glyphs:
+            if abs(glyph["offset"]) <= 0.9 and glyph["h"] >= unit * 2.6:
+                if best is None or glyph["x0"] < best[1]:
+                    best = (glyph["x1"], glyph["x0"])
     if best is None:
         return x_from, None
-    return int(x_from + best["x1"] + unit * 0.3), float(x_from + best["x0"])
+    return int(x_from + best[0] + unit * 0.3), float(x_from + best[1])
 
 
 def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from):
@@ -564,7 +587,12 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from):
         response = np.maximum(response, _correlate(region, extra))
     inside = _correlate(region, core)
 
-    nms_h = max(3, int(round(unit * 0.75)) | 1)
+    # Suppress non-maxima out to just under one staff space vertically.  Noteheads a
+    # third apart, the closest two in a stack ever sit, are exactly one space apart and
+    # both survive; the midway point between them does not, and it needs suppressing,
+    # because the outline template lands its top arc on one notehead and its bottom arc
+    # on the other and scores well on a gap where there is no note at all.
+    nms_h = max(3, int(round(unit * 0.95)) | 1)
     nms_w = max(3, int(round(unit * 0.85)) | 1)
     peaks = (response >= RESPONSE_MIN) & (
         response >= ndimage.maximum_filter(response, size=(nms_h, nms_w)) - 1e-6)

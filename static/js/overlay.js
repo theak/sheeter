@@ -298,6 +298,26 @@
   // Sets every visible pill's box in stage pixels and records it for the overlap test.  Pills
   // are placed beside their notes and then clamped inside the stage, so nothing is ever cut off
   // by the viewport edge; a chord symbol with no headroom above the staff drops below it.
+  // A chord symbol that has nowhere to go above the staff lands on its own hand labels, which
+  // hides the note names.  Slide it clear of them; the hand labels of a step are always laid
+  // out before its chord, so their boxes are already known.
+  function dodge(pill, x, y, size, width) {
+    var left = null;
+    var right = 0;
+    for (var i = 0; i < pills.length; i++) {
+      var box = pills[i].__box;
+      if (!box || pills[i] === pill || pills[i].dataset.step !== pill.dataset.step) { continue; }
+      if (box.t >= y + size.h || box.b <= y) { continue; }
+      if (box.l >= x + size.w || box.r <= x) { continue; }
+      left = left === null ? box.l : Math.min(left, box.l);
+      right = Math.max(right, box.r);
+    }
+    if (left === null) { return x; }
+    if (left - EDGE - size.w >= EDGE) { return left - EDGE - size.w; }
+    if (right + EDGE + size.w <= width - EDGE) { return right + EDGE; }
+    return x;
+  }
+
   function layoutLabels() {
     var width = labels.clientWidth;
     var height = labels.clientHeight;
@@ -328,6 +348,7 @@
         y = anchor.raised * k - size.h;
         if (y < EDGE) { y = anchor.above * k - size.h; }
         if (y < EDGE) { y = anchor.below * k; }
+        x = dodge(pill, x, y, size, width);
       }
       x = clamp(x, EDGE, Math.max(EDGE, width - size.w - EDGE));
       y = clamp(y, EDGE, Math.max(EDGE, height - size.h - EDGE));
@@ -530,22 +551,39 @@
     updateStepBar();
     if (mode === 'step') {
       frameStep(step);
-      keepStageVisible();
+      keepStageVisible(step);
     }
     if (scrollToDetail) {
       detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }
 
-  // Stepping is useless if the photo is off screen or hiding under the sticky control bar,
-  // which is easy on a phone once the reading table has been scrolled to.
-  function keepStageVisible() {
-    var top = viewport.getBoundingClientRect().top;
-    // While the control bar is stuck to the top of the window it hides everything above its
-    // bottom edge, which is exactly where a chord label sits.
+  // Stepping is useless if the labels you just asked for are not on screen: below the fold on
+  // a tall photo, or, once the reading table has been scrolled to, hidden behind the control
+  // bar, which while stuck to the top of the window covers everything above its bottom edge.
+  function keepStageVisible(step) {
     var floor = controls ? Math.max(controls.getBoundingClientRect().bottom, 8) : 8;
-    if (top >= floor && top < window.innerHeight * 0.5) { return; }
-    window.scrollBy({ top: top - floor - 8, left: 0, behavior: 'smooth' });
+    var top = null;
+    var bottom = 0;
+    for (var i = 0; i < pills.length; i++) {
+      if (!pills[i].__box || pills[i].dataset.step !== String(step.number)) { continue; }
+      var rect = pills[i].getBoundingClientRect();
+      top = top === null ? rect.top : Math.min(top, rect.top);
+      bottom = Math.max(bottom, rect.bottom);
+    }
+    if (top === null) {
+      var box = viewport.getBoundingClientRect();
+      top = box.top;
+      bottom = Math.min(box.bottom, box.top + window.innerHeight);
+    }
+
+    var delta = 0;
+    if (top < floor + 8) {
+      delta = top - floor - 8;
+    } else if (bottom > window.innerHeight - 8) {
+      delta = Math.min(bottom - window.innerHeight + 8, top - floor - 8);
+    }
+    if (delta) { window.scrollBy({ top: delta, left: 0, behavior: 'smooth' }); }
   }
 
   for (var r = 0; r < rows.length; r++) {
