@@ -4,6 +4,7 @@ Run from the repo root so that ``sheeter`` is importable:
 ``/home/user/.venv/bin/python -m pytest tests/test_naming.py``
 """
 
+import os
 import random
 
 import pytest
@@ -326,3 +327,25 @@ class TestNamingBeatsTheModels:
     @pytest.mark.parametrize("names, symbol", CASES)
     def test_symbol(self, names, symbol):
         assert naming.name_combined(names, -2)["symbol"] == symbol
+
+
+def test_the_app_does_not_need_music21_to_run():
+    """music21 drags in matplotlib, which is about 45% of the installed footprint, and
+    the only thing it was used for was a description that contradicted the symbol next
+    to it. It stays in requirements-dev.txt for the fixtures and these tests."""
+    import subprocess
+    import sys as _sys
+
+    script = (
+        "import sys\n"
+        "sys.modules['music21'] = None\n"
+        "from sheeter import naming, pipeline, geometry, preprocess, store, schema\n"
+        "c = naming.name_chord(['Bb3','F4','C5','D5','F5','A5'], -2)\n"
+        "assert c['symbol'] == 'Bbmaj9', c\n"
+        "assert 'major ninth' in c['common_name'], c\n"
+        "print('ok')\n"
+    )
+    out = subprocess.run([_sys.executable, "-c", script], capture_output=True, text=True,
+                         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    assert out.returncode == 0, out.stderr
+    assert "ok" in out.stdout

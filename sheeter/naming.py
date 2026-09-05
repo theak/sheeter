@@ -35,6 +35,11 @@ _TENSION_LABELS = {
     1: "b9", 2: "9", 3: "#9", 5: "11", 6: "#11", 8: "b13", 9: "13", 11: "maj7",
 }
 
+_QUALITY_LONG = {"P": "perfect", "M": "major", "m": "minor",
+                 "A": "augmented", "d": "diminished"}
+_ORDINAL_WORDS = {1: "unison", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+                  6: "sixth", 7: "seventh", 8: "octave"}
+
 _ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"]
 _MAJOR_SCALE = (0, 2, 4, 5, 7, 9, 11)
 
@@ -402,13 +407,85 @@ def _consecutive_run(pcs):
 # public API
 # --------------------------------------------------------------------------
 
-def _common_name(notes):
-    try:
-        from music21 import chord as m21chord
-        names = [pitches.to_music21(_ascii_name(s, a)) for s, a, _m, _p in notes]
-        return m21chord.Chord(names).pitchedCommonName
-    except Exception:
-        return None
+#: How to say a pitch name out loud.
+_SPOKEN_ACCIDENTAL = {"#": "-sharp", "b": "-flat"}
+
+_QUALITY_WORDS = {
+    "major": "major", "minor": "minor", "diminished": "diminished",
+    "augmented": "augmented", "other": "",
+}
+
+#: The degree a chord is named for, keyed by the tension's semitone above the root.
+_TENSION_RANK = {1: 9, 2: 9, 3: 9, 5: 11, 6: 11, 8: 13, 9: 13}
+
+#: Tensions worth spelling out because they are altered.
+_ALTERED_WORDS = {
+    1: "a flat ninth", 3: "a sharp ninth", 6: "a sharp eleventh",
+    8: "a flat thirteenth",
+}
+
+
+def _spoken(name):
+    """``'Bb' -> 'B-flat'``, so a description reads as someone would say it."""
+    out = name[:1]
+    for char in name[1:]:
+        out += _SPOKEN_ACCIDENTAL.get(char, char)
+    return out
+
+
+def _describe(root_name, reading, bass_name, quality):
+    """Plain English for the same chord the symbol names.
+
+    music21's ``pitchedCommonName`` was used here and was dropped.  It answers a
+    different question: it calls E-flat 6/9 a "C-major pentatonic", G minor 11 a
+    "G-quartal tetramirror" and F7(b9,13) a "D-major-minor-diminished pentachord".
+    Set-theory names help nobody who cannot read notation, and printing one beside a
+    symbol that disagrees with it is worse than printing nothing.  Saying the symbol in
+    words keeps the two consistent, and it drops music21, and matplotlib behind it, out
+    of what the app needs to run.
+    """
+    seventh, sixth, tensions = reading["seventh"], reading["sixth"], reading["tensions"]
+    dominant = reading["third"] == "M" and seventh == "m"
+
+    if reading["sus"]:
+        colour = "suspended " + ("fourth" if reading["sus"] == "4" else "second")
+    elif dominant:
+        colour = "dominant"
+    elif quality == "diminished" and seventh == "m":
+        # C-Eb-Gb-Bb and C-Eb-Gb-Bbb are different chords and must not share a
+        # description: the first is half-diminished, the second fully diminished.
+        colour = "half-diminished"
+    else:
+        colour = _QUALITY_WORDS.get(quality, "")
+
+    highest = None
+    for semitone in tensions:
+        rank = _TENSION_RANK.get(semitone)
+        if rank and (highest is None or rank > highest):
+            highest = rank
+
+    added_ninth = False
+    if seventh is None and sixth:
+        number = "sixth"
+        added_ninth = 2 in tensions
+    elif highest:
+        number = {9: "ninth", 11: "eleventh", 13: "thirteenth"}[highest]
+    elif seventh is not None:
+        number = "seventh"
+    else:
+        number = None
+
+    head = " ".join(word for word in (_spoken(root_name), colour, number) if word)
+    described = "%s %s" % (head, "chord" if (number or reading["sus"]) else "triad")
+
+    extras = [_ALTERED_WORDS[t] for t in tensions if t in _ALTERED_WORDS]
+    if added_ninth:
+        extras.append("an added ninth")
+    if extras:
+        described += " with " + " and ".join(extras)
+    if bass_name != root_name:
+        described += ", %s in the bass" % _spoken(bass_name)
+    return described
 
 
 def _chord_dict(symbol, common_name, root, bass, quality, notes):
@@ -426,17 +503,19 @@ def _analyse(notes, key_fifths, prev_names):
     """Shared body of name_chord and name_combined.  Returns a chord dict."""
     pcs = set(n[3] for n in notes)
     bass_name = _pc_name(notes[0][0], notes[0][1])
-    common_name = _common_name(notes)
 
     if len(pcs) == 2:
         lo, hi = notes[0], [n for n in notes if n[3] != notes[0][3]][0]
         _octaves, simple_number, quality = _interval_parts(lo, hi)
         name = "%s%d" % (quality, simple_number)
+        words = "%s %s" % (_QUALITY_LONG.get(quality, quality),
+                           _ORDINAL_WORDS.get(simple_number, "%dth" % simple_number))
         if name == "P5":
             symbol = bass_name + "5"                                   # power chord
         else:
             symbol = "%s+%s" % (bass_name, name)
-        return _chord_dict(symbol, common_name, bass_name, bass_name, "other", notes)
+        return _chord_dict(symbol, "%s above %s" % (words, _spoken(bass_name)),
+                           bass_name, bass_name, "other", notes)
 
     reading = _choose(notes, pcs, notes[0][3], prev_names)
     if (reading["cost"] > _FALLBACK_COST or len(pcs) >= 8
@@ -446,12 +525,15 @@ def _analyse(notes, key_fifths, prev_names):
             if pc not in [s[1] for s in seen]:
                 seen.append((_pc_name(step, alter), pc))
         symbol = "/".join(name for name, _pc in seen)
-        return _chord_dict(symbol, common_name, None, bass_name, "other", notes)
+        return _chord_dict(symbol, "%d notes, too dense to name as a chord" % len(seen),
+                           None, bass_name, "other", notes)
 
     root_name = _spell_root(reading["root_pc"], notes, key_fifths)
+    quality = _quality(reading)
     return _chord_dict(
-        _symbol(root_name, reading, bass_name), common_name,
-        root_name, bass_name, _quality(reading), notes,
+        _symbol(root_name, reading, bass_name),
+        _describe(root_name, reading, bass_name, quality),
+        root_name, bass_name, quality, notes,
     )
 
 

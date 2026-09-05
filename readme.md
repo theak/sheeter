@@ -34,6 +34,9 @@ the key signature (the run of accidentals right after it). Accidentals written i
 applied to the notes after them, ledger lines are confirmed before a note outside the staff is
 believed, and stems group noteheads into chords. music21 names the chord.
 
+The only runtime dependencies are numpy, scipy, Pillow, pillow-heif, bottle, waitress and
+the anthropic client. music21 was in there, for one field, and is not any more: see below.
+
 ### The Claude pass
 
 There is an optional second pass that sends the processed image, zoomed crops of each system, and
@@ -90,6 +93,26 @@ To reproduce:
 .venv/bin/python tools/make_fixtures.py
 .venv/bin/python -m pytest tests/test_accuracy.py
 ```
+
+### On chord names
+
+The symbol is worked out here, not looked up. Every pitch class present is tried as the root,
+each reading is charged for what makes it unlikely (no third, a tension that only makes sense
+over a dominant, a rare quality), and the cheapest wins, with a discount for the bass note. That
+is what makes the same five notes read as Cm11 over C and Eb6/9 over Eb.
+
+music21 used to supply the plain-English description beside the symbol and no longer does. Asked
+about the chords above it answers "C-major pentatonic" for E-flat 6/9, "G-quartal tetramirror"
+for G minor 11 and "D-major-minor-diminished pentachord" for F7(b9,13). Those are set-theory
+names, they are no help to someone who cannot read notation, and printing one next to a symbol
+that disagrees with it is worse than printing nothing. The description is now the symbol said in
+words, so the two always agree, and music21 and matplotlib behind it, about 45% of the installed
+footprint, are out of what the app needs to run. They are still in `requirements-dev.txt`,
+because the fixtures are built with music21.
+
+An earlier version also asked Claude to improve the symbols, following the plan. Given the
+pitches of four voicings, both model tiers tried named a chord containing a note that is not on
+the page in three of them. That pass was removed; `tests/test_naming.py` records the cases.
 
 ### Known limits
 

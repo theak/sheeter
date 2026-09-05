@@ -2,7 +2,6 @@ numpy
 scipy
 pillow
 pillow-heif
-music21
 anthropic
 bottle
 waitress
