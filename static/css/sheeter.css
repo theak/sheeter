@@ -220,14 +220,7 @@
   height: auto;
 }
 
-/* margin and display are reset because Pico styles [role=group] as a button bar, and its
-   margin-bottom was shrinking this layer 16px short of the photo it sits on. */
-.labels {
-  position: absolute;
-  inset: 0;
-  display: block;
-  margin: 0;
-}
+.labels { position: absolute; inset: 0; margin: 0; }
 
 .pill {
   position: absolute;

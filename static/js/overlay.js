@@ -710,10 +710,20 @@
   if (zoomFit) { zoomFit.addEventListener('click', fit); }
 
   var pointers = {};
+  var captured = {};
   var pointerCount = 0;
   var lastMid = null;
   var lastSpread = 0;
   var moved = 0;
+
+  // Capturing on pointerdown would make the viewport the target of the click that follows, so
+  // taps on a label or a step marker never reached their buttons.  Capture only once a drag or
+  // a pinch is actually under way, which is the only time the events have to keep coming.
+  function capturePointer(e) {
+    if (captured[e.pointerId]) { return; }
+    captured[e.pointerId] = true;
+    try { viewport.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+  }
 
   function localPoint(e) {
     var box = viewport.getBoundingClientRect();
@@ -744,8 +754,10 @@
     var g = gesture();
     lastMid = g;
     lastSpread = g ? g.spread : 0;
-    if (pointerCount > 1) { e.preventDefault(); }
-    viewport.setPointerCapture(e.pointerId);
+    if (pointerCount > 1) {
+      e.preventDefault();
+      capturePointer(e);
+    }
   });
 
   viewport.addEventListener('pointermove', function (e) {
@@ -756,6 +768,7 @@
 
     if (pointerCount > 1 && lastSpread > 0 && g.spread > 0) {
       e.preventDefault();
+      capturePointer(e);
       zoomAt(scale * (g.spread / lastSpread), g.x, g.y);
       offsetX += g.x - lastMid.x;
       offsetY += g.y - lastMid.y;
@@ -763,6 +776,7 @@
       moved += 40;
     } else if (pointerCount === 1 && scale > 1.01) {
       e.preventDefault();
+      capturePointer(e);
       offsetX += g.x - lastMid.x;
       offsetY += g.y - lastMid.y;
       moved += Math.abs(g.x - lastMid.x) + Math.abs(g.y - lastMid.y);
@@ -776,6 +790,7 @@
   function endPointer(e) {
     if (!pointers[e.pointerId]) { return; }
     delete pointers[e.pointerId];
+    delete captured[e.pointerId];
     pointerCount = Math.max(0, pointerCount - 1);
     lastMid = gesture();
     lastSpread = lastMid ? lastMid.spread : 0;

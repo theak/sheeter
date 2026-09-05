@@ -33,6 +33,11 @@ RESPONSE_MIN = 0.72     # fraction of the ellipse template that must be inked
 GRID_TOLERANCE = 0.34   # how far off the half-space grid a notehead may sit
 STAFF_REACH = 6.0       # staff spaces above/below a staff that still belong to it
 
+#: Staff space, in pixels, below which the reading stops being trustworthy.  Measured
+#: by shrinking fixtures until they broke: at 18 and up the corpus still reads
+#: perfectly, and by 15 whole chords are being invented and dropped.
+RELIABLE_UNIT_PX = 18
+
 
 # --------------------------------------------------------------------------- scale
 
@@ -937,10 +942,12 @@ def analyze(mask):
     staves = find_staves(mask, thickness, unit)
     if not staves:
         return [], ["Could not find any staff lines. Try a closer, sharper photo."]
-    if unit < 12:
+    if unit < RELIABLE_UNIT_PX:
         warnings.append(
-            "The staves are very small in this photo. Move closer or fill the frame "
-            "with one line of music for a better reading.")
+            "The staves are small in this photo, about %d pixels between the lines. "
+            "Below about %d the reading starts to miss notes, so move closer or fill "
+            "the frame with one line of music and try again."
+            % (round(unit), RELIABLE_UNIT_PX))
 
     cleaned = remove_staff_lines(mask, strong_lines, thickness, unit)
     grouping = group_systems(staves, mask, unit)
