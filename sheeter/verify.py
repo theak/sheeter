@@ -181,8 +181,13 @@ def _zoom(image, box, unit):
     return crop
 
 
-def _system_blocks(image, system):
-    """A look at the clef and key signature, then the events a few at a time."""
+def _system_blocks(image, system, limit):
+    """A look at the clef and key signature, then the events a few at a time.
+
+    *limit* caps how many crops are cut.  Cropping, resizing and PNG-encoding a crop is
+    the expensive part of building the request, and without the cap a page of six
+    systems does that work three times over for crops the budget then throws away.
+    """
     units = [s["unit"] for s in system["staves"] if s.get("unit")]
     if not units:
         return []
@@ -192,6 +197,8 @@ def _system_blocks(image, system):
         return []
 
     blocks = []
+    if limit <= 0:
+        return blocks
     left = min(s["x_range"][0] for s in system["staves"])
     prelude = _zoom(image, (max(0, int(left - unit)), top,
                             min(image.width, int(left + unit * 12)), bottom), unit)
@@ -202,6 +209,8 @@ def _system_blocks(image, system):
 
     events = system["events"]
     for start in range(0, len(events), EVENTS_PER_CROP):
+        if len(blocks) // 2 >= limit:
+            break
         chunk = events[start:start + EVENTS_PER_CROP]
         x0 = max(0, int(min(e["x_range"][0] for e in chunk) - unit * 1.5))
         x1 = min(image.width, int(max(e["x_range"][1] for e in chunk) + unit * 1.5))
@@ -231,7 +240,9 @@ def _image_blocks(doc, image_png_bytes):
     budget = MAX_IMAGE_BLOCKS - 1
     # Breadth first: every system gets its clef and key signature looked at before any
     # system gets a second detailed crop, so a page is never read from its first line.
-    per_system = [_system_blocks(page, system) for system in doc["systems"]]
+    systems = doc["systems"] or []
+    share = max(1, budget // max(1, len(systems)))
+    per_system = [_system_blocks(page, system, share + 1) for system in systems]
     for round_index in range(0, max([len(b) for b in per_system] or [0]), 2):
         for system_blocks in per_system:
             if round_index + 1 >= len(system_blocks) or budget <= 0:

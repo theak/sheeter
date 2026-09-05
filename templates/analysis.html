@@ -169,7 +169,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
     <div id="stage" class="stage">
       <img id="sheet" src="/a/{{analysis_id}}/processed.png" alt="The photo, straightened"
            width="{{image['width']}}" height="{{image['height']}}">
-      <div id="labels" class="labels show-both" role="group" aria-label="Note labels on the photo"></div>
+      <!-- No role="group" here: Pico styles that as a button bar, which shrank this layer
+           short of the photo and collapsed the step markers' tap area. Every button inside
+           carries its own aria-label. -->
+      <div id="labels" class="labels show-both"></div>
     </div>
   </div>
   <div id="step-bar" class="step-bar">

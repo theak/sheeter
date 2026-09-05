@@ -105,8 +105,14 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
     <p>Sheeter finds the staff lines in your photo, measures where every notehead sits against
     them, and turns those positions into pitches using the clef and key signature it reads off
     the front of each staff. Then it names the chord each group of notes makes.</p>
-    <p>If an Anthropic API key is configured, Claude looks at the photo alongside that reading and
-    corrects it. Every analysis says plainly which of the two you are looking at.</p>
+    % if verify_available:
+    <p>Every reading is measured this way first. You can then ask Claude to look at the photo
+    alongside it and check the hard parts, from the button on the reading itself. Each reading
+    says plainly whether that has happened.</p>
+    % else:
+    <p>Set an Anthropic API key and you also get a button to have Claude look at the photo and
+    check the reading. Without one you get the measured reading, which is what the app is.</p>
+    % end
     <p>It is not a transcription tool. There is no rhythm beyond hollow-or-filled, and no output
     file. It answers one question: what notes am I looking at here?</p>
   </section>
