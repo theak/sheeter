@@ -454,3 +454,23 @@ def test_single_note_events_are_summarised_by_their_notes(data_root):
     assert entry["summary"] == "C4 - D4 - E4"
     assert entry["event_count"] == 3
     assert entry["note_count"] == 3
+
+
+def test_a_long_filename_does_not_become_a_long_title(data_root):
+    """The filename comes from the client and is the default title. Unclamped, a
+    600 character name renders as a page-sized heading on the analysis page."""
+    from sheeter import pipeline
+
+    doc = make_doc(b"x", title="A" * 600 + ".jpg")
+    assert len(doc["title"]) == 600 + 4      # the fixture builder does not clamp
+
+    png = png_bytes(400, 300)
+    built, _ = pipeline.analyze_bytes(png, "A" * 600 + ".png", "image/png")
+    assert len(built["title"]) == store.MAX_TITLE
+
+
+def test_a_blank_filename_still_gets_a_title(data_root):
+    from sheeter import pipeline
+
+    built, _ = pipeline.analyze_bytes(png_bytes(400, 300), "   ", "image/png")
+    assert built["title"] == "photo"

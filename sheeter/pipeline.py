@@ -3,7 +3,7 @@
 import datetime
 import hashlib
 
-from . import naming, geometry, preprocess, schema
+from . import naming, geometry, preprocess, schema, store
 
 
 def _now():
@@ -21,8 +21,12 @@ def analyze_bytes(raw_bytes, filename="photo.jpg", content_type="image/jpeg",
     gray, mask, info = preprocess.prepare(raw_bytes)
     systems, warnings = geometry.analyze(mask)
 
+    # The filename comes from the client and is the default title, so it needs the
+    # same clamp store.rename applies.  Left alone, a 600 character name renders as a
+    # page-sized heading that pushes every control off a phone screen.
+    label = str(title or filename or "photo").strip()[:store.MAX_TITLE] or "photo"
     document = schema.new_analysis(
-        analysis_id(raw_bytes), _now(), title or filename,
+        analysis_id(raw_bytes), _now(), label,
         {
             "filename": filename,
             "content_type": content_type,
