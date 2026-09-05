@@ -49,7 +49,7 @@ def _event(index, x, parts):
 def _part(staff, names, x):
     notes = sorted((_note(staff, n, x) for n in names), key=lambda n: n["midi"])
     return {
-        "staff": staff["index"], "hand": staff["hand"], "duration_hint": "quarter",
+        "staff": staff["index"], "hand": staff["hand"], "duration_hint": "quarter-or-shorter",
         "dotted": False, "notes": notes,
         "chord": naming.name_chord([n["name"] for n in notes], 0),
     }
@@ -500,3 +500,56 @@ def test_a_bad_correction_leaves_the_document_alone(doc, png, monkeypatch):
     assert out["engine"]["verified"] is False
     assert "schema" in out["engine"]["verifier_error"]
     assert pitch_names(out) == ["E4", "G4", "C5"]
+
+
+def test_a_junk_pitch_name_does_not_shuffle_the_others(doc):
+    """The blocker: a partially parseable list used to skip the low-to-high sort, so
+    the model's names were zipped onto noteheads in whatever order they arrived, and
+    _rename_chords re-sorted afterwards so the corrupted document still validated."""
+    system = doc["systems"][0]
+    for staff in system["staves"]:
+        staff["clef_confidence"] = 0.5      # let the verifier act on this system
+    part = system["events"][0]["parts"][0]
+    before = [(n["name"], n["y"]) for n in part["notes"]]
+    assert len(before) >= 3
+
+    highest, lowest = before[-1][0], before[0][0]
+    payload = correction([{"index": 0, "staves": [], "events": [{
+        "index": 0,
+        "parts": [{"staff": part["staff"],
+                   "notes": [highest] + ["zzz"] * (len(before) - 2) + [lowest]}],
+        "confidence": 0.9, "note": ""}]}])
+    out = verify.apply_correction(doc, payload)
+    after = [(n["name"], n["y"]) for n in out["systems"][0]["events"][0]["parts"][0]["notes"]]
+
+    # The two names that parsed keep the geometry of the notehead at their own pitch.
+    assert after[0][0] == lowest and after[0][1] == before[0][1]
+    assert after[-1][0] == highest and after[-1][1] == before[-1][1]
+
+
+def test_every_event_has_at_most_one_part_per_staff():
+    """verify._apply_events resolves the model's per-staff correction onto the first
+    part it finds, so two parts sharing a staff would take a corrected pitch onto the
+    wrong notehead. geometry guarantees this; assert the guarantee."""
+    import json
+    import os
+
+    from sheeter import pipeline
+
+    fixtures = os.path.join(os.path.dirname(__file__), "fixtures")
+    manifest = os.path.join(fixtures, "manifest.json")
+    if not os.path.isfile(manifest):
+        pytest.skip("run tools/make_fixtures.py first")
+    with open(manifest) as handle:
+        cases = json.load(handle)["cases"]
+    for case in cases:
+        path = os.path.join(fixtures, case["file"])
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as handle:
+            built, _png = pipeline.analyze_bytes(handle.read(), case["file"], "image/png")
+        for system in built["systems"]:
+            for event in system["events"]:
+                staves = [part["staff"] for part in event["parts"]]
+                assert len(staves) == len(set(staves)), "%s event %d" % (
+                    case["name"], event["index"])

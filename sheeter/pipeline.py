@@ -52,17 +52,20 @@ def name_everything(document):
     """Fill in every chord name in place, per hand and for both hands together."""
     for system in document["systems"]:
         keys = dict((staff["index"], staff["key_fifths"]) for staff in system["staves"])
-        previous = None
+        # Per staff, because name_chord's tie-break asks what that hand played last, and
+        # the two hands are separate lines.  It was being tracked and never passed, so
+        # the geometry path and the verifier's renaming chained differently.
+        previous = {}
         for event in system["events"]:
             pooled = []
             for part in event["parts"]:
                 names = [note["name"] for note in part["notes"]]
-                part["chord"] = naming.name_chord(names, keys.get(part["staff"], 0))
+                part["chord"] = naming.name_chord(names, keys.get(part["staff"], 0),
+                                                  previous.get(part["staff"]))
+                previous[part["staff"]] = names
                 pooled.extend(names)
-            fifths = keys.get(0, 0)
-            pooled = _sorted_unique(pooled)
-            event["combined"] = naming.name_combined(pooled, fifths)
-            previous = pooled
+            event["combined"] = naming.name_combined(_sorted_unique(pooled),
+                                                     keys.get(0, 0))
     return document
 
 

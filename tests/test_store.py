@@ -77,7 +77,7 @@ def _event(index, names):
     part = {
         "staff": 0,
         "hand": "right",
-        "duration_hint": "quarter",
+        "duration_hint": "quarter-or-shorter",
         "dotted": False,
         "notes": notes,
         "chord": naming.name_chord(ascii_names, -2),

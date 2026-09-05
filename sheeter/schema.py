@@ -5,9 +5,12 @@ Every write to disk goes through :func:`validate_analysis`, so a malformed
 document fails at the point it is produced rather than in the browser.
 """
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-DURATION_HINTS = ("whole", "half", "quarter", "eighth", "shorter", None)
+#: What the geometry will commit to.  "quarter-or-shorter" rather than "quarter" and
+#: "eighth" because telling those apart means reading the flag or the beam, and the
+#: measurements say that cannot be done reliably here.  See geometry.duration_hint.
+DURATION_HINTS = ("whole", "half", "quarter-or-shorter", None)
 ACCIDENTALS = ("flat", "sharp", "natural", "double-flat", "double-sharp", None)
 CLEFS = ("treble", "bass", "alto", "tenor")
 HANDS = ("right", "left", None)

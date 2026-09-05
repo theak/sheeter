@@ -189,7 +189,17 @@ def reverify(analysis_id):
     with open(store.path(analysis_id, "processed.png"), "rb") as handle:
         document = verify.verify_analysis(document, handle.read())
     pipeline.name_everything(document)
-    store.save_doc(document)
+
+    # The call above takes five to twenty-five seconds, and waitress serves other
+    # requests meanwhile.  Writing back the copy read before it would quietly undo a
+    # rename made in that window, so re-read and carry over only what the pass owns.
+    try:
+        latest = store.load(analysis_id)
+    except (KeyError, ValueError):
+        return redirect("/")
+    for field in ("systems", "engine", "warnings"):
+        latest[field] = document[field]
+    store.save_doc(latest)
     return redirect("/a/%s" % analysis_id)
 
 

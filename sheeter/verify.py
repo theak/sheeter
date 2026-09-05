@@ -507,8 +507,15 @@ def _apply_names(part, names, staff, event):
     # direction: an answer that is neither strictly ascending nor strictly descending,
     # which one transposition or one repeated pitch is enough to produce, would
     # otherwise be zipped on in whatever order it arrived.
-    if all(pitch is not None for pitch in parsed):
-        parsed.sort(key=lambda pitch: pitches.step_to_midi(*pitch))
+    # Sort the entries that parsed and leave the rest where they are, so a single junk
+    # name cannot silently turn off the ordering and zip every other correction onto the
+    # wrong notehead.  _rename_chords re-sorts by midi afterwards, which would hide it.
+    usable = sorted((index for index, pitch in enumerate(parsed) if pitch is not None),
+                    key=lambda index: pitches.step_to_midi(*parsed[index]))
+    ordered = list(parsed)
+    for slot, index in zip(sorted(usable), usable):
+        ordered[slot] = parsed[index]
+    parsed = ordered
 
     if len(parsed) == len(part["notes"]):
         notes = []

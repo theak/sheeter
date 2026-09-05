@@ -102,6 +102,10 @@
     return (staff && staff.clef === 'bass') ? 'l' : 'r';
   }
 
+  function prettyPitch(name) {
+    return String(name).replace(/b/g, '\u266d').replace(/#/g, '\u266f');
+  }
+
   // Note names read top to bottom on the page, and the schema sorts them low to high.
   function displayNames(part) {
     var out = [];
@@ -110,6 +114,13 @@
     }
     return out;
   }
+
+  // The reader stops at "quarter or shorter" on purpose; see geometry.duration_hint.
+  var DURATION_WORDS = {
+    'whole': 'whole notes',
+    'half': 'half notes',
+    'quarter-or-shorter': 'quarter notes or shorter'
+  };
 
   var ORDINALS = ['', 'unison', '2nd', '3rd', '4th', '5th', '6th', '7th', 'octave',
                   '9th', '10th', '11th', '12th', '13th', '14th', 'two octaves'];
@@ -481,10 +492,13 @@
         // A power chord's symbol is the root plus a bare 5, which reads as a note name
         // to someone who knows note names and not chord symbols, which is this reader.
         extras.push(/^[A-G][b#\u266d\u266f]?5$/.test(part.chord.symbol)
-          ? 'on its own: a bare fifth, ' + part.chord.symbol.slice(0, -1) + ' and the note five above it'
+          ? 'on its own: a bare fifth, ' + prettyPitch(part.chord.symbol.slice(0, -1)) + ' and the note five above it'
           : 'on its own: ' + part.chord.symbol);
       }
-      if (part.duration_hint) { extras.push(part.duration_hint + (part.dotted ? ', dotted' : '') + ' notes'); }
+      if (part.duration_hint) {
+        var length = DURATION_WORDS[part.duration_hint] || (part.duration_hint + ' notes');
+        extras.push(length + (part.dotted ? ', dotted' : ''));
+      }
       if (shown.length === 1) {
         extras.push('a single note');
       } else {

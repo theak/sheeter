@@ -1,4 +1,4 @@
-# Sheeter analysis JSON (schema version 1)
+# Sheeter analysis JSON (schema version 2)
 
 One analysis == one uploaded photo. Stored at `data/<id>/analysis.json`.
 
@@ -11,7 +11,7 @@ arbitrary mobile scaling.
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "8f3a1c2d9b4e",              // 12 hex chars, sha256 of the original bytes
   "created_at": "2026-09-05T20:31:00Z",
   "title": "IMG_4021.jpg",           // user-editable label, defaults to filename
@@ -77,7 +77,7 @@ arbitrary mobile scaling.
             {
               "staff": 0,
               "hand": "right",
-              "duration_hint": "half", // "whole"|"half"|"quarter"|"eighth"|"shorter"|null
+              "duration_hint": "half", // "whole"|"half"|"quarter-or-shorter"|null
               "dotted": false,
               "notes": [               // ALWAYS sorted low pitch -> high pitch
                 {

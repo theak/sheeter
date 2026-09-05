@@ -123,9 +123,11 @@ Things it genuinely cannot do, as opposed to does badly:
 - **Handwritten music.** Every shape it looks for is an engraved one.
 - **Rests.** They are not detected at all. A bar of rests in the left hand simply reads as no
 notes there, with nothing marking the silence.
-- **Rhythm.** A notehead gets `whole`, `half`, `quarter`, `eighth` or `shorter` from its shape
-and its stem, plus a dot if there is one. There are no ties, no tuplets, and nothing that adds up
-to a bar.
+- **Rhythm.** A notehead gets `whole`, `half` or `quarter-or-shorter` from its shape and its
+stem, plus a dot if there is one. It stops there because telling a quarter from an eighth means
+finding the flag or the beam, and across the corpus the ink beside a stem tip is 0.00 to 0.12 of
+the box for a flag and 0.00 to 0.17 for a plain quarter: they do not separate, so any threshold
+labels some notes wrongly. There are no ties, no tuplets, and nothing that adds up to a bar.
 - **Two voices in one staff.** Noteheads sharing an x position in a staff become one chord, so
 independent voices collapse into each other.
 - **A clef change mid-staff.** The clef is read once, from the left edge of each staff, and holds

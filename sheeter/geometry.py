@@ -913,42 +913,35 @@ def align_across_staves(per_staff, unit):
     events, current = [], []
     for entry in entries:
         if current and entry["x"] - current[-1]["x"] > unit * 2.0:
-            events.append(current)
-            current = []
-        # One staff never contributes twice to the same event.
-        if any(other["staff"] == entry["staff"] for other in current) and \
-                entry["x"] - current[-1]["x"] > unit * 0.9:
-            events.append(current)
+            events.append(_one_part_per_staff(current))
             current = []
         current.append(entry)
     if current:
-        events.append(current)
+        events.append(_one_part_per_staff(current))
     return events
 
 
-def duration_hint(notes, stems, beams, unit):
-    """Whole, half, quarter or eighth, from the notehead and its stem.
+def _one_part_per_staff(entries):
+    """Fold entries from the same staff together.
 
-    Rhythm is secondary to the product promise, so this reports what can be seen
-    without parsing beam groups: hollow or filled, stemmed or not, beamed or not.
+    Two chords from one staff landing in the same event happens with wide intervals,
+    where the two noteheads are far enough apart vertically to be clustered separately
+    and close enough in x to be simultaneous.  They are simultaneous, so they are one
+    chord.  Leaving them as two parts breaks an invariant everything downstream leans
+    on: the verifier resolves the model's per-staff correction onto whichever part it
+    finds first and writes a corrected pitch onto the wrong notehead.
     """
-    hollow = all(n["hollow"] for n in notes)
-    xs = [n["x"] for n in notes]
-    stem = None
-    for candidate in stems:
-        if candidate.get("kind") != "stem":
+    merged = {}
+    for entry in entries:
+        held = merged.get(entry["staff"])
+        if held is None:
+            merged[entry["staff"]] = dict(entry)
             continue
-        if min(abs(candidate["x"] - x) for x in xs) <= unit * 0.95:
-            stem = candidate
-            break
-    if hollow:
-        return ("half" if stem else "whole"), stem
-    if stem is None:
-        return "quarter", None
-    for beam in beams:
-        if abs(beam["x"] - stem["x"]) <= unit * 0.9:
-            return "eighth", stem
-    return "quarter", stem
+        held["notes"] = sorted(held["notes"] + entry["notes"], key=lambda n: -n["y"])
+        held["x0"] = min(held["x0"], entry["x0"])
+        held["x1"] = max(held["x1"], entry["x1"])
+        held["x"] = float(np.mean([n["x"] for n in held["notes"]]))
+    return [merged[key] for key in sorted(merged)]
 
 
 def mark_barlines(stems, notes, unit):
@@ -976,20 +969,28 @@ def mark_barlines(stems, notes, unit):
     return stems
 
 
-def detect_beams(mask_ns, band, unit):
-    """Thick horizontal bars: beams and flags, which mark an eighth or shorter."""
-    region = mask_ns[band[0]:band[1], :]
-    found = []
-    for comp in _components(region, int(unit * unit * 0.2)):
-        if comp["w"] < unit * 0.8 or comp["h"] > unit * 2.2:
+def duration_hint(notes, stems, unit):
+    """What the notehead and its stem say about how long the note is.
+
+    Deliberately stops at "quarter or shorter".  Telling a quarter from an eighth means
+    finding the flag or the beam, and measured across the corpus the ink beside a stem
+    tip is 0.00 to 0.12 of the box for a flag and 0.00 to 0.17 for a plain quarter: the
+    two do not separate, so any threshold labels some notes wrongly.  Saying "quarter or
+    shorter" is true of every one of them, and the product promise is which notes these
+    are, not how long they last.
+    """
+    hollow = all(note["hollow"] for note in notes)
+    xs = [note["x"] for note in notes]
+    stem = None
+    for candidate in stems:
+        if candidate.get("kind") != "stem":
             continue
-        if comp["h"] < unit * 0.25:
-            continue
-        if comp["w"] / float(comp["h"]) < 1.4:
-            continue
-        found.append({"x": comp["x0"], "x1": comp["x1"],
-                      "y": band[0] + (comp["y0"] + comp["y1"]) / 2.0})
-    return found
+        if min(abs(candidate["x"] - x) for x in xs) <= unit * 0.95:
+            stem = candidate
+            break
+    if hollow:
+        return ("half" if stem else "whole"), stem
+    return "quarter-or-shorter", stem
 
 
 def detect_dots(mask_ns, band, unit, notes):
@@ -1089,7 +1090,6 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
     for position, member in enumerate(members):
         staff, band, clef = member["staff"], member["band"], member["clef"]
         stems = detect_stems(cleaned, band, unit)
-        beams = detect_beams(cleaned, band, unit)
         accidentals = detect_accidentals(cleaned, band, unit, member["clef_end"])
 
         # Order matters: the key signature has to be read before the time signature can
@@ -1120,13 +1120,14 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
                    or staff["lines"][-1] > height - unit * 1.2
                    or staff["x_range"][1] > width - 2)
         if cut_off:
-            warnings.append(
-                "A staff runs off the edge of the photo, so notes there may be "
-                "missing. Retake it with a little margin around the music.")
+            note = ("A staff runs off the edge of the photo, so notes there may be "
+                    "missing. Retake it with a little margin around the music.")
+            if note not in warnings:
+                warnings.append(note)     # once, however many staves are clipped
 
         per_staff[position] = group_by_stem(notes, stems, unit)
         key_ends[position] = key_end
-        member["stems"], member["beams"] = stems, beams
+        member["stems"] = stems
         staff_docs.append({
             "index": position,
             "hand": member["hand"],
@@ -1149,8 +1150,7 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
         parts = []
         for entry in sorted(entries, key=lambda e: e["staff"]):
             member = members[entry["staff"]]
-            hint, _stem = duration_hint(entry["notes"], member["stems"],
-                                        member["beams"], unit)
+            hint, _stem = duration_hint(entry["notes"], member["stems"], unit)
             parts.append({
                 "staff": entry["staff"],
                 "hand": member["hand"],
