@@ -32,7 +32,9 @@ one peak.
 becomes a pitch once you know the clef (read from the height of the glyph at the left edge) and
 the key signature (the run of accidentals right after it). Accidentals written in the bar are
 applied to the notes after them, ledger lines are confirmed before a note outside the staff is
-believed, and stems group noteheads into chords. music21 names the chord.
+believed, and stems group noteheads into chords.
+6. **Naming.** Every pitch class present is tried as the root of the chord, each reading is
+charged for what makes it unlikely, and the cheapest wins. See below.
 
 The only runtime dependencies are numpy, scipy, Pillow, pillow-heif, bottle, waitress and
 the anthropic client. music21 was in there, for one field, and is not any more: see below.
