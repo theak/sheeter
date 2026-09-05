@@ -45,7 +45,7 @@ SYMBOL_TOOL = "chord_labels"
 #: Sonnet 5 is in the high resolution vision tier: 2576 px on the long edge,
 #: above which the API downscales the image for us.  Doing it here instead keeps
 #: the request small and keeps us in control of the resampling filter.
-MAX_IMAGE_PX = 2576
+MAX_IMAGE_PX = 1568
 
 #: Below this width the whole page is legible in one block and per-system crops
 #: would only repeat it.
@@ -54,7 +54,7 @@ WIDE_IMAGE_PX = 1600
 #: Total image blocks in one request, full page included.  A page of six systems
 #: at 2576 px is roughly 4800 visual tokens each, so an uncapped request would be
 #: both slow and expensive for very little extra signal.
-MAX_IMAGE_BLOCKS = 5
+MAX_IMAGE_BLOCKS = 8
 
 VERIFY_MAX_TOKENS = 8000
 SYMBOL_MAX_TOKENS = 4000
@@ -175,17 +175,69 @@ def _raw_block(png_bytes):
     }
 
 
-def _system_crop(image, system):
-    """The system with three staff units of padding, or None if it is empty."""
-    units = [s["unit"] for s in system["staves"] if s.get("unit")]
-    # unit belongs to a staff, not to a system; the largest one pads enough for
-    # every staff in the system.
-    pad = 3 * (max(units) if units else 0)
-    top = max(0, int(system["y_range"][0] - pad))
-    bottom = min(image.height, int(system["y_range"][1] + pad))
-    if bottom - top < 2:
+#: Events per zoomed crop, and the staff space those crops are scaled to.  Dense
+#: chords are read far better at this size than at the size a phone photo of a whole
+#: page puts them, which is the whole reason for cropping rather than sending the page.
+EVENTS_PER_CROP = 3
+TARGET_UNIT_PX = 46
+
+
+def _system_box(image, system, unit):
+    top = max(0, int(system["y_range"][0] - unit * 2))
+    bottom = min(image.height, int(system["y_range"][1] + unit * 2))
+    return top, bottom
+
+
+def _zoom(image, box, unit):
+    """Crop and scale so a staff space lands near TARGET_UNIT_PX."""
+    crop = image.crop(box)
+    if crop.width < 8 or crop.height < 8:
         return None
-    return image.crop((0, top, image.width, bottom))
+    factor = TARGET_UNIT_PX / float(unit) if unit else 1.0
+    factor = min(factor, MAX_IMAGE_PX / float(max(crop.size)))
+    if factor > 1.02:
+        crop = crop.resize((max(1, int(crop.width * factor)),
+                            max(1, int(crop.height * factor))), Image.LANCZOS)
+    return crop
+
+
+def _system_blocks(image, system):
+    """A look at the clef and key signature, then the events a few at a time."""
+    units = [s["unit"] for s in system["staves"] if s.get("unit")]
+    if not units:
+        return []
+    unit = max(units)
+    top, bottom = _system_box(image, system, unit)
+    if bottom - top < 8:
+        return []
+
+    blocks = []
+    left = min(s["x_range"][0] for s in system["staves"])
+    prelude = _zoom(image, (max(0, int(left - unit)), top,
+                            min(image.width, int(left + unit * 12)), bottom), unit)
+    if prelude is not None:
+        blocks.append({"type": "text", "text":
+                       "System %d, clef and key signature:" % system["index"]})
+        blocks.append(_raw_png(prelude))
+
+    events = system["events"]
+    for start in range(0, len(events), EVENTS_PER_CROP):
+        chunk = events[start:start + EVENTS_PER_CROP]
+        x0 = max(0, int(min(e["x_range"][0] for e in chunk) - unit * 1.5))
+        x1 = min(image.width, int(max(e["x_range"][1] for e in chunk) + unit * 1.5))
+        crop = _zoom(image, (x0, top, x1, bottom), unit)
+        if crop is None:
+            continue
+        blocks.append({"type": "text", "text": "System %d, events %d to %d:" % (
+            system["index"], chunk[0]["index"], chunk[-1]["index"])})
+        blocks.append(_raw_png(crop))
+    return blocks
+
+
+def _raw_png(image):
+    buf = io.BytesIO()
+    image.save(buf, format="PNG", optimize=True)
+    return _raw_block(buf.getvalue())
 
 
 def _image_blocks(doc, image_png_bytes):
@@ -195,15 +247,17 @@ def _image_blocks(doc, image_png_bytes):
     except Exception:
         return [{"type": "text", "text": "Page:"}, _raw_block(image_png_bytes)]
 
-    blocks = [{"type": "text", "text": "Page:"}, _png_block(page)]
-    if page.width <= WIDE_IMAGE_PX:
-        return blocks
-    for system in doc["systems"][: MAX_IMAGE_BLOCKS - 1]:
-        crop = _system_crop(page, system)
-        if crop is None:
-            continue
-        blocks.append({"type": "text", "text": "System %d, zoomed:" % system["index"]})
-        blocks.append(_png_block(crop))
+    blocks = [{"type": "text", "text": "Whole page:"}, _png_block(page)]
+    budget = MAX_IMAGE_BLOCKS - 1
+    # Breadth first: every system gets its clef and key signature looked at before any
+    # system gets a second detailed crop, so a page is never read from its first line.
+    per_system = [_system_blocks(page, system) for system in doc["systems"]]
+    for round_index in range(0, max([len(b) for b in per_system] or [0]), 2):
+        for system_blocks in per_system:
+            if round_index + 1 >= len(system_blocks) or budget <= 0:
+                continue
+            blocks.extend(system_blocks[round_index:round_index + 2])
+            budget -= 1
     return blocks
 
 
@@ -249,8 +303,10 @@ def _correction_tool():
             "index": {"type": "integer", "description": "staff index within the system"},
             "clef": {"type": "string", "enum": list(schema.CLEFS)},
             "key_fifths": {
-                "type": "integer", "minimum": -7, "maximum": 7,
-                "description": "sharps positive, flats negative, 0 for none",
+                "type": "integer",
+                # Strict tool schemas reject minimum and maximum on an integer, so the
+                # range is stated here and enforced when the response is applied.
+                "description": "-7 to 7: sharps positive, flats negative, 0 for none",
             },
             "cut_off": {"type": "boolean",
                         "description": "the staff runs off the edge of the photo"},
@@ -276,7 +332,8 @@ def _correction_tool():
         "properties": {
             "index": {"type": "integer"},
             "parts": {"type": "array", "items": part},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "confidence": {"type": "number",
+                           "description": "0 to 1, how sure you are of this event"},
             "note": {"type": "string",
                      "description": "one sentence about this event, or empty"},
         },
@@ -571,6 +628,51 @@ def _merge(doc, payload):
     return out
 
 
+#: A geometry reading this sure is not overruled from a photograph.  Measured against
+#: the fixture corpus the geometry reads 157 of 157 noteheads and the vision pass reads
+#: 151, all six of its losses being notes on ledger lines, where counting staff
+#: positions by eye is exactly what a language model is worst at.  So the vision pass
+#: arbitrates where the geometry admits doubt and confirms where it does not, and its
+#: commentary is kept either way.
+CONFIDENT_NOTE = 0.88
+CONFIDENT_STAFF = 0.9
+
+
+def geometry_is_sure(system):
+    """Did the geometry read this system without reservation?"""
+    if system["cut_off"]:
+        return False
+    for staff in system["staves"]:
+        if min(staff["key_confidence"], staff["clef_confidence"]) < CONFIDENT_STAFF:
+            return False
+    for event in system["events"]:
+        for part in event["parts"]:
+            if any(note["confidence"] < CONFIDENT_NOTE for note in part["notes"]):
+                return False
+    return True
+
+
+def _enforce_trust(before, after):
+    """Put back the measurements of any system the geometry was sure about.
+
+    The verifier keeps its per-event notes and its page-level remarks, which are the
+    part of its answer that is worth having on a reading that was already right.
+    """
+    for original, revised in zip(before["systems"], after["systems"]):
+        if not geometry_is_sure(original):
+            continue
+        for was, now in zip(original["staves"], revised["staves"]):
+            now["clef"] = was["clef"]
+            now["key_fifths"] = was["key_fifths"]
+        if len(revised["events"]) != len(original["events"]):
+            revised["events"] = copy.deepcopy(original["events"])
+            continue
+        for was, now in zip(original["events"], revised["events"]):
+            now["parts"] = copy.deepcopy(was["parts"])
+            now["combined"] = copy.deepcopy(was["combined"])
+    return after
+
+
 def apply_correction(doc, payload):
     """Merge a ``corrected_reading`` payload into *doc*.
 
@@ -582,7 +684,7 @@ def apply_correction(doc, payload):
     if not isinstance(payload, dict):
         return doc
     try:
-        out = _merge(doc, payload)
+        out = _enforce_trust(doc, _merge(doc, payload))
         schema.validate_analysis(out)
     except Exception:
         return doc

@@ -64,6 +64,11 @@ def _dir(analysis_id):
     return os.path.join(data_dir(), _check_id(analysis_id))
 
 
+def directory(analysis_id):
+    """Absolute path to an analysis directory, id validated."""
+    return _dir(analysis_id)
+
+
 def path(analysis_id, name):
     """Absolute path to a file inside an analysis directory."""
     if not isinstance(name, str) or not NAME_RE.match(name):

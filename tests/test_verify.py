@@ -210,9 +210,15 @@ def test_build_request_slim_view_hides_the_chords(doc, png):
     assert set(event["parts"][0]["notes"][0]) == {"name", "y"}
 
 
-def test_narrow_page_sends_one_image(doc, png):
+def test_every_page_sends_the_overview_plus_zoomed_crops(doc, png):
+    """A phone photo of a page puts a staff space at well under the size the model
+    reads dense chords at, so the crops are the point of the request, not an extra
+    for wide images.  The overview is only there for context."""
     content = verify.build_request(doc, png)["messages"][0]["content"]
-    assert sum(1 for b in content if b["type"] == "image") == 1
+    images = [b for b in content if b["type"] == "image"]
+    assert 1 < len(images) <= verify.MAX_IMAGE_BLOCKS
+    labels = [b["text"] for b in content if b["type"] == "text"]
+    assert any("clef and key signature" in text for text in labels)
 
 
 def test_wide_page_sends_crops_and_honours_the_cap():
