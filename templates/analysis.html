@@ -159,6 +159,12 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
       <button type="button" id="zoom-fit">Fit</button>
     </div>
+    <div class="control-group">
+      <!-- Starts pressed because playback is on by default.  overlay.js corrects both the
+           label and the state from the stored preference, and hides this entirely where
+           there is no Web Audio to turn off. -->
+      <button type="button" id="sound-toggle" class="sound-button" aria-pressed="true">Sound on</button>
+    </div>
     <p class="legend">
       <span class="key key-r">R</span> right hand
       <span class="key key-l">L</span> left hand
@@ -302,6 +308,7 @@ safe_json = analysis_json.replace("<", "\\u003C")
 </main>
 
 <script>window.SHEETER_DATA = {{!safe_json}};</script>
+<script src="/static/js/audio.js"></script>
 <script src="/static/js/overlay.js"></script>
 </body>
 </html>

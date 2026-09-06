@@ -199,14 +199,16 @@
   font-size: 0.85rem;
 }
 .stage-controls input[type="range"] { width: 7rem; margin: 0; }
-.view-button[aria-pressed="true"], .mode-button[aria-pressed="true"] {
+.view-button[aria-pressed="true"], .mode-button[aria-pressed="true"],
+.sound-button[aria-pressed="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
   color: var(--pico-primary-inverse);
 }
 /* Not var(--pico-color): Pico redefines that inside a button to the inverse, which is white,
    so the unpressed toggles rendered as empty boxes. */
-.view-button[aria-pressed="false"], .mode-button[aria-pressed="false"] {
+.view-button[aria-pressed="false"], .mode-button[aria-pressed="false"],
+.sound-button[aria-pressed="false"] {
   background: transparent;
   border-color: var(--pico-muted-border-color);
   color: var(--pico-primary);

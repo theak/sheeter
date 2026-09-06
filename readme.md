@@ -196,6 +196,24 @@ with JavaScript off.
 Uploads are content addressed by sha256, so re-uploading or re-pasting the same image returns the
 analysis you already have instead of computing it twice.
 
+### Hearing the chords
+
+Selecting a step plays it, which for someone who knows what a chord sounds like but not what it
+looks like is the whole point. Tap a numbered dot, a label, or a row in the table, or walk through
+with the arrow keys, and you get both hands together as one chord.
+
+The synthesis is deliberately plain: one triangle oscillator per note through a struck envelope,
+so it lands somewhere near a music box. That is about a hundred lines of Web Audio in
+`static/js/audio.js` and needs no samples, no library and no network. It is not trying to sound
+like a piano, only to be recognisable.
+
+A "Sound on" button next to the zoom controls turns it off, and the choice is remembered. Playback
+is on by default, and nothing sounds until you actually select something: the audio context is
+built inside the first click, which is both what the autoplay rules want and why the page is silent
+while it loads. Each chord cuts the one before it, so holding an arrow key steps rather than
+smears. Where there is no Web Audio the button is hidden rather than left there doing nothing.
+
+
 ### Configuration
 
 | Variable | Default | What it does |
