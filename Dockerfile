@@ -1,12 +1,15 @@
-# Debian rather than Alpine.  Every direct requirement has a musllinux wheel, but jiter,
-# which anthropic pulls in, publishes none at all.  On Alpine pip does not fail, it
-# quietly resolves back to an anthropic old enough that it cannot send the strict tool
-# schemas in sheeter/verify.py.
-FROM python:3.13-slim
+# Alpine.  Every requirement has a musllinux wheel on both amd64 and arm64, so nothing
+# is built from source here.  That is only true because the Anthropic SDK is not one of
+# them: it pulls in jiter, which publishes no musl wheel at all, and pip does not fail
+# on that, it quietly resolves back to an SDK too old to send the strict tool schemas
+# in sheeter/verify.py.  sheeter/claude.py is a few dozen lines of urllib instead.
+FROM python:3.13-alpine
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ADD requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# --only-binary keeps that honest: if a musl wheel ever goes missing the build fails
+# here instead of quietly compiling, or quietly resolving back to an older release.
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 COPY sheeter/ /app/sheeter/
 COPY static/ /app/static/
 COPY templates/ /app/templates/

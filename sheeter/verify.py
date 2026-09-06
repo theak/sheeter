@@ -97,19 +97,13 @@ Rules:
 
 def available():
     """True when a verification pass could actually run."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return False
-    try:
-        import anthropic  # noqa: F401
-    except Exception:
-        return False
-    return True
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 def _new_client():
-    import anthropic
+    from . import claude
 
-    return anthropic.Anthropic()
+    return claude.Client()
 
 
 def _reason(exc):

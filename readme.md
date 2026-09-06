@@ -36,16 +36,17 @@ believed, and stems group noteheads into chords.
 6. **Naming.** Every pitch class present is tried as the root of the chord, each reading is
 charged for what makes it unlikely, and the cheapest wins. See below.
 
-The only runtime dependencies are numpy, scipy, Pillow, pillow-heif, bottle, waitress and
-the anthropic client. music21 was in there, for one field, and is not any more: see below.
+The only runtime dependencies are numpy, scipy, Pillow, pillow-heif, bottle and waitress.
+Two libraries were in there and are not any more: music21, for one field, and the anthropic SDK,
+which `sheeter/claude.py` replaces with about a hundred lines of `urllib`. See below for both.
 
 ### The Claude pass
 
 There is an optional second pass that sends the processed image, zoomed crops of each system, and
 the current reading to Claude, and asks for a corrected reading back. It does not run on every
 upload. `SHEETER_VERIFY` is `manual` by default, which puts a "Verify with Claude" button on the
-analysis page; `auto` runs it on upload, `off` hides it. It needs `ANTHROPIC_API_KEY` set and the
-`anthropic` package installed, and it adds five to twenty-five seconds.
+analysis page; `auto` runs it on upload, `off` hides it. It needs `ANTHROPIC_API_KEY` set and
+nothing else installed, and it adds five to twenty-five seconds.
 
 What comes back is also merged narrowly. A system is only overruled where the geometry admitted
 doubt: the system is cut off by the frame, or a clef or key signature was read with confidence
@@ -203,6 +204,7 @@ analysis you already have instead of computing it twice.
 | `SHEETER_VERIFY` | `manual` | `manual` puts the verify button on the analysis page, `auto` runs the pass on every upload, `off` hides it. Anything else behaves like `manual` |
 | `ANTHROPIC_API_KEY` | unset | Required for the Claude pass. Without it there is no button and no pass, whatever `SHEETER_VERIFY` says |
 | `SHEETER_VERIFY_MODEL` | `claude-sonnet-5` | Model for the vision pass |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Point the Claude pass at a gateway or a proxy |
 | `PORT` | `5000` | Port to listen on, both for `tools/serve.sh` and in the docker image |
 
 ### Where things are stored
@@ -246,9 +248,23 @@ On Ubuntu:
 Every fixture is seeded from its case name, so two runs produce byte-identical output. Without
 them the accuracy tests skip rather than fail.
 
-The docker image is built on `python:3.13-slim` rather than Alpine. Every direct dependency has a
-musl wheel, but `jiter` and `pydantic-core` underneath the anthropic SDK do not, and on Alpine pip
-quietly resolves back to a years-old SDK instead of failing.
+### Why there is no SDK
+
+The docker image is Alpine, and every requirement has a musllinux wheel on both amd64 and arm64,
+so nothing is compiled during the build. That is only true because the anthropic SDK is not one of
+them. It pulls in `jiter`, which publishes no musl wheel at all, and pip does not fail on that: it
+quietly resolves back to an SDK too old to send the strict tool schemas in `sheeter/verify.py`.
+Building `jiter` from source instead means a Rust toolchain in the image.
+
+Switching vendors does not help. The `openai` SDK requires `jiter` as well, and `litellm` depends
+on `openai` and adds `tiktoken`, `tokenizers` and `fastuuid` on top, all Rust extensions with the
+same problem. Both are strictly worse.
+
+So there is no SDK. `sheeter/claude.py` is a `urllib` POST to `/v1/messages` with the retries kept,
+exposing `client.messages.create(...)` so the calling code reads the same either way. It honours
+`ANTHROPIC_BASE_URL`, which is also how `tests/test_claude.py` points it at a loopback server. What
+is given up is streaming and typed response models, neither of which this app used: the reply was
+walked as plain JSON before and still is.
 
 ### Credits
 
