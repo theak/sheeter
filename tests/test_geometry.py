@@ -329,3 +329,81 @@ class TestGlyphColumns:
         only_line = np.zeros((60, 30), dtype=bool)
         only_line[30, :] = True
         assert geometry._glyph_columns(only_line, 4) is None
+
+
+class TestAccidentalShape:
+    """What makes something an accidental beyond its size.
+
+    Every accidental is a closed shape that encloses background: the square of a sharp,
+    the bowl of a flat.  A stem fragment the right height is not, and two of them were
+    read as sharps on one page, one of them then as a G major key signature.
+    """
+
+    @staticmethod
+    def ring(h=60, w=20, wall=4):
+        out = np.zeros((h, w), dtype=bool)
+        out[:, :] = True
+        out[wall:h - wall, wall:w - wall] = False
+        return out
+
+    def test_a_closed_shape_has_a_hole(self):
+        assert geometry._holes(self.ring()) == 1
+
+    def test_a_filled_shape_has_none(self):
+        assert geometry._holes(np.ones((60, 20), dtype=bool)) == 0
+
+    def test_a_ring_cut_open_has_none(self):
+        """A hollow notehead cut down the middle is a C, which is why a chord of whole
+        notes no longer passes as two accidentals."""
+        half = self.ring()[:, :10]
+        assert geometry._holes(half) == 0
+
+    def test_sized_but_open_is_not_an_accidental(self):
+        unit = 22.0
+        stem = np.zeros((int(unit * 3), int(unit * 0.9)), dtype=bool)
+        stem[:, 8:12] = True                             # a bare vertical stroke
+        comp = {"h": stem.shape[0], "w": stem.shape[1], "patch": stem}
+        assert geometry._accidental_sized(comp, unit)
+        assert not geometry._whole_accidental(comp, unit)
+
+    def test_sized_and_closed_is(self):
+        unit = 22.0
+        glyph = self.ring(h=int(unit * 3), w=int(unit * 0.9))
+        comp = {"h": glyph.shape[0], "w": glyph.shape[1], "patch": glyph}
+        assert geometry._whole_accidental(comp, unit)
+
+
+class TestStemInATimeSignature:
+    """A time signature never has a stem in it.
+
+    The fallback for a fused time signature is a single tall glyph centred on the middle
+    line.  A note on the middle line with its stem up is exactly that, and on one page
+    it was the first left-hand note, which the notehead search then started past.
+    """
+
+    def test_a_stem_runs_most_of_the_height(self):
+        glyph = np.zeros((90, 30), dtype=bool)
+        glyph[0:80, 14:18] = True                       # 89% of the height, 4 wide
+        glyph[70:90, 4:28] = True                       # a notehead at the bottom
+        assert geometry._has_stem(glyph, thickness=4)
+
+    def test_a_digits_upright_does_not(self):
+        """The upright of a 4 is about half of a fused pair's height."""
+        pair = np.zeros((90, 30), dtype=bool)
+        pair[2:42, 14:18] = True                        # upper 4's upright, 44%
+        pair[48:88, 14:18] = True                       # lower 4's upright
+        pair[20:26, 2:28] = True                        # a crossbar each
+        pair[66:72, 2:28] = True
+        assert not geometry._has_stem(pair, thickness=4)
+
+    def test_a_nicked_stem_still_counts(self):
+        """Staff line removal can leave a one-line gap in a stem; that is not two glyphs."""
+        glyph = np.zeros((90, 30), dtype=bool)
+        glyph[0:80, 14:18] = True
+        glyph[40:43, 14:18] = False                     # a nick no wider than a line
+        glyph[70:90, 4:28] = True
+        assert geometry._has_stem(glyph, thickness=4)
+
+    def test_a_wide_column_is_not_a_stem(self):
+        block = np.ones((90, 30), dtype=bool)           # solid, every column is tall
+        assert not geometry._has_stem(block, thickness=4)
