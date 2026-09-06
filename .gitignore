@@ -9,3 +9,5 @@ __pycache__
 /tests/fixtures/*.jpg
 /tests/fixtures/*.svg
 .pytest_cache
+results.xml
+health.json

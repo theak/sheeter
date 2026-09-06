@@ -275,6 +275,34 @@ anyway since apk links it. The Dockerfile does not take that on faith: it import
 modules in their own layer, so a base image that stops satisfying them fails the build rather than
 the first upload.
 
+### CI
+
+Two workflows, and one of them calls the other.
+
+`tests.yml` runs on every pull request against main. It installs `libcairo2`, engraves the
+fixture corpus from scratch, and runs the suite. Two of its steps exist because of specific ways
+this repo can go quietly wrong:
+
+- **Corpus drift.** The fixture images are gitignored and rebuilt on each run, which is only safe
+because every case is seeded from its own name. The job diffs the regenerated manifest against the
+committed one, so a change that alters what gets engraved fails loudly instead of moving the
+accuracy baseline underneath you. This is not hypothetical: the generator sat broken for several
+commits because the images on disk predated the break.
+- **Silent skips.** The accuracy tests skip rather than fail when the corpus is missing, so the
+suite can go green having never read a note. Everything they need is installed on the runner, so
+the job fails on any skip at all and names which ones.
+
+It also builds the docker image, runs the container, and polls `/health`. That is the end-to-end
+check that the Alpine base actually works, which the musl notes above can only argue statically.
+
+`docker-build.yml` runs on push to main, which is what merging a pull request does. It calls
+`tests.yml` first and pushes `akshaykannan/sheeter:latest` for amd64 and arm64 only if every job
+passes. It needs `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` as repository secrets.
+
+Note that a workflow running on a pull request does not by itself stop anyone merging it. To make
+these a real gate, require `pytest` and `docker image` as status checks in the branch protection
+rule for main.
+
 ### Credits
 
 - [Pico CSS](https://picocss.com) for the stylesheet, vendored in `static/css/`.

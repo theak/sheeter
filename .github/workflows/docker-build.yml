@@ -6,8 +6,18 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  # Merging a pull request is a push to main, so this is the same suite that ran on the
+  # pull request, run again against what actually landed.  Nothing is pushed to Docker
+  # Hub unless every job in it passes.
+  test:
+    uses: ./.github/workflows/tests.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

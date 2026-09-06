@@ -1,0 +1,135 @@
+# Runs on every pull request, and again on main as the gate in front of the image
+# push, which calls this file through workflow_call rather than duplicating it.
+name: Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  # Superseding a pull request's run is fine.  Cancelling a run on main is not: it
+  # is what decides whether the image gets pushed.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # cairosvg reaches libcairo through cffi at runtime, so pip cannot supply it.
+      # Tracing /proc/self/maps through an actual svg2png says cairo is the only one
+      # it opens; fontconfig, freetype, pixman and png arrive as cairo's own
+      # dependencies, so there is no need to name them here.
+      - name: Install cairo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libcairo2
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # The fixture images are gitignored and engraved fresh here.  That is only safe
+      # because every case is seeded from its own name, so the corpus is byte
+      # reproducible; the next step is what keeps that claim honest.
+      - name: Build the fixture corpus
+        run: python tools/make_fixtures.py
+
+      - name: Check the corpus did not drift
+        run: |
+          git diff --exit-code -- tests/fixtures/manifest.json || {
+            echo "::error::make_fixtures.py no longer reproduces the committed manifest."
+            echo "Run tools/make_fixtures.py locally and commit the result if the change is intended."
+            exit 1
+          }
+
+      - name: Run the tests
+        run: pytest -q --junitxml=results.xml
+
+      # The accuracy tests skip rather than fail when the corpus is missing, which
+      # would let this whole job pass green without ever reading a note.  Everything
+      # they need is installed above, so on a runner any skip at all is the
+      # environment being wrong, and worth failing over.
+      - name: Fail if any test skipped
+        if: always()
+        run: |
+          python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          try:
+              cases = list(ET.parse("results.xml").iter("testcase"))
+          except (OSError, ET.ParseError) as exc:
+              sys.exit("could not read results.xml: %s" % exc)
+
+          skipped = [(c.get("classname"), c.get("name"), c.find("skipped").get("message"))
+                     for c in cases if c.find("skipped") is not None]
+          print("%d tests ran, %d skipped" % (len(cases), len(skipped)))
+          if not skipped:
+              sys.exit(0)
+          for classname, name, why in skipped:
+              print("::error::skipped %s::%s - %s" % (classname, name, why))
+          sys.exit("every dependency is installed on this runner, so a skip means "
+                   "the environment is wrong, not that the test was optional")
+          PY
+
+  image:
+    name: docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Single platform, because load and multi-platform are mutually exclusive and the
+      # point here is to run the thing.  The push job builds both.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: sheeter:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image is Alpine, and musl is where a wheel that installs cleanly can still
+      # fail to load.  The Dockerfile's import layers cover that; this covers the rest
+      # of the container, waitress and the CMD included.
+      - name: Run it and check it answers
+        run: |
+          docker run -d --name sheeter -p 5000:5000 sheeter:ci
+          # python3, not python: this job has no setup-python step, and the runner
+          # only guarantees the former.
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:5000/health -o health.json; then
+              cat health.json
+              python3 -c "import json; assert json.load(open('health.json'))['ok']"
+              echo "the container is serving"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the container never answered on /health"
+          exit 1
+
+      - name: Container logs
+        if: failure()
+        run: docker logs sheeter || true
