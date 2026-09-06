@@ -200,7 +200,13 @@ and says so before it does it, and the whole thing is a details element and two 
 with JavaScript off.
 
 Uploads are content addressed by sha256, so re-uploading or re-pasting the same image returns the
-analysis you already have instead of computing it twice.
+analysis you already have instead of computing it twice. Unless the reader has changed since: every
+analysis records the engine version that made it, and when that is not the version running now,
+re-uploading reads the page again, keeping the title you gave it. Every reading also has a "Re-analyze"
+button beside "Verify with Claude" that runs the current reader over the stored photo, and a
+reading made by an older engine says so at the top of its page, so what is already in the gallery
+can be brought up to date without finding the file. Otherwise a page analysed before a fix would
+show the reading from before the fix for as long as it stayed in the store.
 
 ### Hearing the chords
 
