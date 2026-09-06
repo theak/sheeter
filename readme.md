@@ -131,6 +131,11 @@ the box for a flag and 0.00 to 0.17 for a plain quarter: they do not separate, s
 labels some notes wrongly. There are no ties, no tuplets, and nothing that adds up to a bar.
 - **Two voices in one staff.** Noteheads sharing an x position in a staff become one chord, so
 independent voices collapse into each other.
+- **Accidentals in a tight voicing.** Written sharps and flats are found as connected shapes, so
+two that touch each other are one shape and neither is read. Close jazz voicings stack them in a
+diagonal cascade where that happens often. Worse, a missed accidental is not just a missing sharp:
+noteheads are detected everywhere except where an accidental was found, so an undetected one gets
+read as a notehead or two of its own, and a three-note chord comes back with five notes in it.
 - **A clef change mid-staff.** The clef is read once, from the left edge of each staff, and holds
 for the whole line.
 - **Music cropped at the frame edge.** It notices (`cut_off`, and a warning on the page) but it

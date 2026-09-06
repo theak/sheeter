@@ -423,6 +423,35 @@ def detect_clef(mask_ns, staff, band, unit):
     return clef, round(float(confidence), 2), left + best["x1"]
 
 
+def _glyph_columns(patch, thickness):
+    """The columns of *patch* that hold glyph rather than a staff-line remnant.
+
+    Taking the staff lines out leaves a sliver of line either side of whatever it
+    crossed.  On an accidental that is a horizontal whisker sticking out of the glyph,
+    and the bounding box counts it: the sharps in a close voicing measured 1.55 staff
+    spaces wide against a real width of 1.00, so the width test threw them away and the
+    chord lost every accidental in it.
+
+    The cut is the staff line's own thickness, because that is what bounds the whisker:
+    a column crossing nothing but a remnant cannot hold more ink than the line was
+    thick.  A real stroke's column holds a good part of the glyph's height, which is
+    several times that even on a thick scan, since thickness grows far more slowly than
+    a glyph does.
+
+    A fraction of the component's height would seem more scale free and is not.  Tried
+    at 0.15 it read 24 pixels on a clean 51 pixel-per-space render, ate most of a glyph,
+    and turned an empty key signature into one sharp.  The remnant there was still one
+    pixel: it is the line that sets the scale here, not the glyph.
+
+    Returns ``(first, last)`` inclusive, or None when nothing survives.
+    """
+    ink = patch.sum(axis=0)
+    solid = np.flatnonzero(ink > max(1.0, thickness))
+    if solid.size == 0:
+        return None
+    return int(solid[0]), int(solid[-1])
+
+
 def classify_accidental(comp):
     """Tell a flat from a sharp from a natural, and say where its pitch reference is.
 
@@ -460,11 +489,22 @@ def classify_accidental(comp):
     return ("natural" if stagger > 0.075 else "sharp"), centre
 
 
-def detect_accidentals(mask_ns, band, unit, x_from=0):
+def detect_accidentals(mask_ns, band, unit, x_from=0, thickness=1):
     """Every flat, sharp and natural in a staff's band, left to right."""
     region = mask_ns[band[0]:band[1], x_from:]
     found = []
     for comp in _components(region, int(unit * unit * 0.12)):
+        span = _glyph_columns(comp["patch"], thickness)
+        if span is None:
+            continue
+        # Measure, classify and place the glyph on its own ink.  The trimmed box matters
+        # beyond the width test: detect_noteheads drops noteheads that overlap an
+        # accidental, so an inflated box reaching half a staff space past the ink could
+        # swallow the very note the accidental belongs to.
+        left, right = span
+        comp = dict(comp, patch=comp["patch"][:, left:right + 1],
+                    x0=comp["x0"] + left, x1=comp["x0"] + right + 1,
+                    w=right - left + 1)
         ratio_h, ratio_w = comp["h"] / unit, comp["w"] / unit
         if not (1.85 <= ratio_h <= 3.7 and 0.22 <= ratio_w <= 1.25):
             continue
@@ -1140,7 +1180,8 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
     for position, member in enumerate(members):
         staff, band, clef = member["staff"], member["band"], member["clef"]
         stems = detect_stems(cleaned, band, unit)
-        accidentals = detect_accidentals(cleaned, band, unit, member["clef_end"])
+        accidentals = detect_accidentals(cleaned, band, unit, member["clef_end"],
+                                         thickness)
 
         # Order matters: the key signature has to be read before the time signature can
         # be looked for, because it is what decides where the time signature starts.

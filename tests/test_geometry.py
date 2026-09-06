@@ -272,3 +272,60 @@ class TestClef:
         stemmed[bottom:bottom + int(unit * 5),
                 left + int(unit * 5):left + int(unit * 5) + 3] = True
         assert self._read(stemmed) == ["treble", "bass"]
+
+
+class TestGlyphColumns:
+    """Measuring an accidental's width past the staff lines that crossed it.
+
+    Removing the staff lines leaves a whisker of line either side of anything it
+    crossed.  The bounding box counts it, and on a real page that took sharps from
+    1.00 staff spaces wide to 1.55, past the width test, so a chord lost every
+    accidental in it.
+    """
+
+    STROKES = ((4, 8), (16, 20))        # a sharp's two verticals, as (start, stop)
+
+    @classmethod
+    def sharp(cls, height=69, whisker=0):
+        """Two vertical strokes, optionally with a line remnant sticking out each side.
+
+        The remnant is one pixel tall, which is what staff line removal actually leaves
+        behind on the page this came from.
+        """
+        width = cls.STROKES[-1][1] + whisker * 2
+        mask = np.zeros((height, width), dtype=bool)
+        for begin, end in cls.STROKES:
+            mask[4:height - 4, whisker + begin:whisker + end] = True
+        if whisker:
+            mask[height // 2, :] = True
+        return mask
+
+    def test_ignores_the_line_remnant(self):
+        whisker = 8
+        first, last = geometry._glyph_columns(self.sharp(whisker=whisker), 4)
+        assert (first, last) == (whisker + self.STROKES[0][0],
+                                 whisker + self.STROKES[-1][1] - 1)
+
+    def test_a_bare_glyph_measures_the_same(self):
+        """Trimming must be a no-op when there is nothing to trim."""
+        first, last = geometry._glyph_columns(self.sharp(), 4)
+        assert (first, last) == (self.STROKES[0][0], self.STROKES[-1][1] - 1)
+
+    def test_does_not_eat_a_glyph_on_a_high_resolution_render(self):
+        """Why the cut follows line thickness and not a share of the height.
+
+        At 0.15 of the height this read 24 pixels on a 158 pixel tall glyph, chewed
+        most of it away, and turned an empty key signature into one sharp.  The thin
+        but real part here holds 10 pixels: well under that cut and well over the
+        thickness, so only the thickness rule keeps it.
+        """
+        tall = np.zeros((158, 40), dtype=bool)
+        tall[:, 0:4] = True                      # a full height stroke
+        tall[0:10, 4:36] = True                  # thin, real, and only 10 pixels deep
+        tall[:, 36:40] = True
+        assert geometry._glyph_columns(tall, 4) == (0, 39)
+
+    def test_all_remnant_and_no_glyph_measures_nothing(self):
+        only_line = np.zeros((60, 30), dtype=bool)
+        only_line[30, :] = True
+        assert geometry._glyph_columns(only_line, 4) is None
