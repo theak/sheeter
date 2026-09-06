@@ -80,13 +80,29 @@ jobs:
 
           skipped = [(c.get("classname"), c.get("name"), c.find("skipped").get("message"))
                      for c in cases if c.find("skipped") is not None]
-          print("%d tests ran, %d skipped" % (len(cases), len(skipped)))
-          if not skipped:
-              sys.exit(0)
+          errors = [c for c in cases if c.find("error") is not None]
+          accuracy = [c for c in cases
+                      if (c.get("classname") or "").startswith("tests.test_accuracy")
+                      and c.find("skipped") is None and c.find("error") is None]
+          print("%d testcases, %d skipped, %d errored, %d accuracy tests ran"
+                % (len(cases), len(skipped), len(errors), len(accuracy)))
+
           for classname, name, why in skipped:
               print("::error::skipped %s::%s - %s" % (classname, name, why))
-          sys.exit("every dependency is installed on this runner, so a skip means "
-                   "the environment is wrong, not that the test was optional")
+          if skipped:
+              sys.exit("every dependency is installed on this runner, so a skip means "
+                       "the environment is wrong, not that the test was optional")
+
+          # A collection error is reported as a testcase with no skip on it, so counting
+          # skips alone called a run where nothing was importable a clean one.
+          if errors:
+              for case in errors:
+                  print("::error::errored %s::%s" % (case.get("classname"), case.get("name")))
+              sys.exit("tests errored rather than ran")
+
+          # The point of the whole job.  If these did not run, nothing read a note.
+          if not accuracy:
+              sys.exit("no accuracy test ran, so the corpus was never read")
           PY
 
   image:
