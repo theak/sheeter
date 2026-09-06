@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import traceback
 
 import bottle
@@ -29,6 +30,17 @@ EXTENSIONS = {
     "image/heic": "heic", "image/heif": "heif", "image/gif": "gif",
     "image/tiff": "tiff", "image/bmp": "bmp",
 }
+
+
+#: Where a form post is allowed to send the browser afterwards.  Anything not on this
+#: site is refused rather than followed: a "next" taken straight from a form is an open
+#: redirect, and this one is reachable by anybody who can get a link in front of you.
+SAFE_NEXT = re.compile(r"^/(a/[0-9a-f]{12})?$")
+
+
+def _safe_next(default):
+    wanted = (request.forms.get("next") or "").strip()
+    return wanted if SAFE_NEXT.match(wanted) else default
 
 
 def _verify_offered():
@@ -161,13 +173,16 @@ def _file(analysis_id, name):
 
 @app.route("/a/<analysis_id>/rename", method="POST")
 def rename(analysis_id):
-    title = (request.forms.get("title") or "").strip()[:120]
+    # Renaming happens from the gallery as well as from the reading, so the form says
+    # where it came from and we go back there.
+    target = _safe_next("/a/%s" % analysis_id)
+    title = (request.forms.get("title") or "").strip()[:store.MAX_TITLE]
     if title:
         try:
             store.rename(analysis_id, title)
         except (KeyError, ValueError):
             pass
-    return redirect("/a/%s" % analysis_id)
+    return redirect(target)
 
 
 @app.route("/a/<analysis_id>/delete", method="POST")

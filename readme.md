@@ -186,6 +186,12 @@ usually the fastest on a desktop, since a screenshot of a PDF or a scan goes str
 clipboard to a reading with no file to save first. A pasted image is titled by the moment you
 pasted it, because the clipboard does not carry a useful name.
 
+Readings are titled by whatever the file was called, which is rarely what you want to see in a
+list a week later. Every card in the gallery has a "Rename or delete" row: rename it to something
+you will recognise, or throw it away. Both are also on the reading itself. Deleting is permanent
+and says so before it does it, and the whole thing is a details element and two forms, so it works
+with JavaScript off.
+
 Uploads are content addressed by sha256, so re-uploading or re-pasting the same image returns the
 analysis you already have instead of computing it twice.
 

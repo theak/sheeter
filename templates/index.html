@@ -84,6 +84,20 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
             </span>
           </span>
         </a>
+        <details class="g-manage">
+          <summary>Rename or delete</summary>
+          <form action="/a/{{item['id']}}/rename" method="post" class="g-rename">
+            <input type="hidden" name="next" value="/">
+            <label class="off-screen" for="name-{{item['id']}}">New name for {{item['title']}}</label>
+            <input type="text" id="name-{{item['id']}}" name="title" value="{{item['title']}}"
+                   maxlength="120" autocomplete="off" spellcheck="false">
+            <button type="submit">Save name</button>
+          </form>
+          <form action="/a/{{item['id']}}/delete" method="post" class="g-delete"
+                onsubmit="return confirm('Delete {{item['title']}} for good? This cannot be undone.');">
+            <button type="submit" class="secondary outline danger">Delete permanently</button>
+          </form>
+        </details>
       </li>
 %   end
     </ul>

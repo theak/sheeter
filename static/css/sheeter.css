@@ -91,19 +91,52 @@
 .gallery > li, .strip > li { list-style: none; }
 
 .gallery { display: grid; gap: 0.75rem; }
-.gallery > li { margin: 0; }
+/* The card carries the frame, not the link inside it: the rename and delete controls
+   sit next to the link, and a button cannot live inside an anchor. */
+.gallery > li {
+  margin: 0;
+  border: 1px solid var(--pico-card-border-color);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+}
+.gallery > li:hover, .gallery > li:focus-within { border-color: var(--pico-primary); }
 .gallery a {
   display: flex;
   gap: 0.8rem;
   align-items: center;
   padding: 0.6rem;
-  border: 1px solid var(--pico-card-border-color);
-  border-radius: var(--pico-border-radius);
-  background: var(--pico-card-background-color);
   text-decoration: none;
   color: inherit;
 }
-.gallery a:hover, .gallery a:focus-visible { border-color: var(--pico-primary); }
+
+/* A details element rather than a menu, so renaming and deleting still work with no
+   JavaScript, and so opening it is a deliberate act before anything destructive. */
+.g-manage { border-top: 1px solid var(--pico-card-border-color); }
+.g-manage > summary {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  cursor: pointer;
+}
+.g-manage > summary:hover { color: var(--pico-primary); }
+.g-manage[open] > summary { color: var(--pico-primary); }
+.g-rename { display: flex; gap: 0.4rem; padding: 0 0.7rem; margin: 0; align-items: center; }
+/* min-width 0 matters: a flex item will not shrink below its intrinsic width without
+   it, and Pico gives inputs a wide one, so the field collapses and the button takes
+   the row. */
+.g-rename input { margin: 0; flex: 1 1 auto; min-width: 0; }
+.g-rename button { margin: 0; flex: 0 0 auto; width: auto; white-space: nowrap; }
+.g-delete { padding: 0.5rem 0.7rem 0.7rem; margin: 0; }
+.g-delete button { margin: 0; width: 100%; }
+
+.off-screen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 .g-thumb {
   width: 84px;
   height: 84px;
