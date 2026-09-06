@@ -200,10 +200,18 @@ analysis you already have instead of computing it twice.
 
 Selecting a step plays it, which for someone who knows what a chord sounds like but not what it
 looks like is the whole point. Tap a numbered dot, a label, or a row in the table, or walk through
-with the arrow keys, and you get both hands together as one chord.
+with the arrow keys.
+
+The chord is strummed rather than struck: one note every 120ms, low to high, left hand before
+right, so a six-note voicing rolls out over 600ms. That is slow enough to hear the notes arrive
+one at a time and still fast enough that they ring together as a chord. Ordering is by hand first
+and pitch second, which is not the same as sorting every note by pitch, because the hands can
+overlap and a left-hand note above a right-hand one should still come first.
 
 The synthesis is deliberately plain: one triangle oscillator per note through a struck envelope,
-so it lands somewhere near a music box. That is about a hundred lines of Web Audio in
+so it lands somewhere near a music box. The decay is 2.6s, which is set by the strum rather than
+by taste: at the 1.15s it started out with, the bottom note was down to 2% of its peak by the time
+the top one arrived, and six notes in a row is not a chord. That is about a hundred lines of Web Audio in
 `static/js/audio.js` and needs no samples, no library and no network. It is not trying to sound
 like a piano, only to be recognisable.
 

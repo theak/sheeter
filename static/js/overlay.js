@@ -562,16 +562,23 @@
   // sound.  Absent audio, muted stays true and nothing below ever tries to make a noise.
   var muted = !(audio && audio.supported) || recall('muted', '0') === '1';
 
+  // Left hand before right, low to high inside each.  Not the same as sorting every note
+  // by pitch: the hands can overlap, and a left-hand note sitting above a right-hand one
+  // should still be struck first.  A lone staff has no hand at all, and then pitch is the
+  // only thing left to order by, which this does by giving every note the same rank.
+  var HAND_ORDER = { left: 0, right: 1 };
+
   function stepMidis(step) {
-    var midis = [];
+    var notes = [];
     (step.event.parts || []).forEach(function (part) {
+      var hand = HAND_ORDER[part.hand];
+      if (hand === undefined) { hand = 0; }
       (part.notes || []).forEach(function (note) {
-        if (typeof note.midi === 'number') { midis.push(note.midi); }
+        if (typeof note.midi === 'number') { notes.push({ hand: hand, midi: note.midi }); }
       });
     });
-    // Both hands at once, low to high, which is the chord as it would actually be played.
-    midis.sort(function (a, b) { return a - b; });
-    return midis;
+    notes.sort(function (a, b) { return a.hand - b.hand || a.midi - b.midi; });
+    return notes.map(function (note) { return note.midi; });
   }
 
   function playStep(step) {
