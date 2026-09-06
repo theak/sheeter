@@ -1,4 +1,5 @@
 <%
+import re
 image = doc["image"]
 engine = doc["engine"]
 warnings = doc["warnings"] or []
@@ -46,7 +47,8 @@ for system in doc["systems"]:
         parts = []
         for part in event["parts"]:
             staff = by_index.get(part["staff"]) or {}
-            names = [note["pretty"] for note in part["notes"]]
+            # "G♯ 4" not "G♯4", the same spacing overlay.js uses on the labels.
+            names = [re.sub(r"(\d+)$", r" \1", note["pretty"]) for note in part["notes"]]
             names.reverse()
             parts.append({
                 "hand": HAND_LABEL.get(part["hand"]) or (
