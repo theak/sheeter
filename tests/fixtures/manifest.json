@@ -21,7 +21,7 @@
                 "E4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -32,7 +32,7 @@
                 "A4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -43,7 +43,7 @@
                 "C5"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -54,7 +54,7 @@
                 "F5"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -88,7 +88,7 @@
                 "G2"
               ],
               "durations": {
-                "bass": "quarter"
+                "bass": "quarter-or-shorter"
               },
               "dotted": {
                 "bass": false
@@ -99,7 +99,7 @@
                 "B2"
               ],
               "durations": {
-                "bass": "quarter"
+                "bass": "quarter-or-shorter"
               },
               "dotted": {
                 "bass": false
@@ -110,7 +110,7 @@
                 "D3"
               ],
               "durations": {
-                "bass": "quarter"
+                "bass": "quarter-or-shorter"
               },
               "dotted": {
                 "bass": false
@@ -121,7 +121,7 @@
                 "A3"
               ],
               "durations": {
-                "bass": "quarter"
+                "bass": "quarter-or-shorter"
               },
               "dotted": {
                 "bass": false
@@ -168,8 +168,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -188,8 +188,8 @@
                 "Bb3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -208,8 +208,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -228,8 +228,8 @@
                 "C3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -278,8 +278,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -298,8 +298,8 @@
                 "F#3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -318,8 +318,8 @@
                 "F#3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -338,8 +338,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -389,8 +389,8 @@
                 "Bb2"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -410,8 +410,8 @@
                 "C3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -431,8 +431,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -452,8 +452,8 @@
                 "Eb3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -498,8 +498,8 @@
                 "C4"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -514,8 +514,8 @@
                 "E4"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -530,8 +530,8 @@
                 "E2"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -546,8 +546,8 @@
                 "C2"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -594,8 +594,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -612,8 +612,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -630,8 +630,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -648,8 +648,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -697,7 +697,7 @@
               ],
               "durations": {
                 "right": "half",
-                "left": "quarter"
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -714,8 +714,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -732,8 +732,8 @@
                 "B3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -800,8 +800,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -819,8 +819,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -838,8 +838,8 @@
                 "F#3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -857,8 +857,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -894,8 +894,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -913,8 +913,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -932,8 +932,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -951,8 +951,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -988,7 +988,7 @@
                 "F4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -999,7 +999,7 @@
                 "G4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1010,7 +1010,7 @@
                 "A4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1021,7 +1021,7 @@
                 "Bb4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1032,7 +1032,7 @@
                 "C5"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1043,7 +1043,7 @@
                 "Bb4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1054,7 +1054,7 @@
                 "A4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1065,7 +1065,7 @@
                 "F4"
               ],
               "durations": {
-                "treble": "quarter"
+                "treble": "quarter-or-shorter"
               },
               "dotted": {
                 "treble": false
@@ -1113,8 +1113,8 @@
                 "C3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1133,8 +1133,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1153,8 +1153,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1173,8 +1173,8 @@
                 "C3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1239,8 +1239,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1257,8 +1257,8 @@
                 "B3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": true,
@@ -1275,8 +1275,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1339,8 +1339,8 @@
                 "C3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1355,8 +1355,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1371,8 +1371,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1387,8 +1387,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1403,8 +1403,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1419,8 +1419,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1435,8 +1435,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1451,8 +1451,8 @@
                 "D3"
               ],
               "durations": {
-                "right": "eighth",
-                "left": "eighth"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1502,8 +1502,8 @@
                 "E3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1522,8 +1522,8 @@
                 "F3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1542,8 +1542,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1562,8 +1562,8 @@
                 "A3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1611,8 +1611,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,
@@ -1627,7 +1627,7 @@
               ],
               "left": null,
               "durations": {
-                "right": "quarter",
+                "right": "quarter-or-shorter",
                 "left": null
               },
               "dotted": {
@@ -1643,7 +1643,7 @@
               ],
               "left": null,
               "durations": {
-                "right": "quarter",
+                "right": "quarter-or-shorter",
                 "left": null
               },
               "dotted": {
@@ -1662,8 +1662,8 @@
                 "G3"
               ],
               "durations": {
-                "right": "quarter",
-                "left": "quarter"
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
               },
               "dotted": {
                 "right": false,

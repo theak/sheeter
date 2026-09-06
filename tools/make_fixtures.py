@@ -433,13 +433,21 @@ def _note_names(obj):
     return [name for _, name in out]
 
 
+#: music21 duration types that the schema collapses into "quarter-or-shorter".
+#: geometry.duration_hint cannot tell them apart: flag and beam ink measures the same as
+#: a plain stem, so the manifest may only claim what a correct reading could claim.
+SHORT_DURATIONS = ("quarter", "eighth", "16th", "32nd", "64th", "128th")
+
+
 def _duration_hint(obj):
     if obj is None or obj.isRest:
         return None
     kind = obj.duration.type
-    if kind not in ("whole", "half", "quarter", "eighth"):
-        kind = "shorter"
+    if kind in SHORT_DURATIONS:
+        kind = "quarter-or-shorter"
     if kind not in schema.DURATION_HINTS:
+        # Anything longer than a whole note, or a complex tied duration, has no honest
+        # hint.  Say so rather than filing it under the shortest bucket.
         raise ValueError("duration %r is not a schema duration hint" % (kind,))
     return kind
 
