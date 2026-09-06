@@ -181,8 +181,13 @@ second or two. You get the photo back with a label on each notehead and the chor
 under each step. Everything you have analysed before is on the home page, so you can jump back to
 it.
 
-Uploads are content addressed by sha256, so re-uploading the same photo returns the analysis you
-already have instead of computing it twice.
+Four ways in: the camera button, a file from the device, drag and drop, or paste. Pasting is
+usually the fastest on a desktop, since a screenshot of a PDF or a scan goes straight from the
+clipboard to a reading with no file to save first. A pasted image is titled by the moment you
+pasted it, because the clipboard does not carry a useful name.
+
+Uploads are content addressed by sha256, so re-uploading or re-pasting the same image returns the
+analysis you already have instead of computing it twice.
 
 ### Configuration
 

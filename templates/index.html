@@ -44,6 +44,8 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
       <input type="file" id="file-input" name="file" accept="image/*">
     </p>
 
+    <p class="pick-file js-only" id="paste-hint">or paste an image from your clipboard</p>
+
     <p id="submit-row"><button type="submit">Analyse this photo</button></p>
   </form>
 
@@ -126,6 +128,8 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
 
 <script>
 (function () {
+  document.documentElement.classList.add('js');
+
   var form = document.getElementById('upload-form');
   var fileInput = document.getElementById('file-input');
   var captureInput = document.getElementById('capture-input');
@@ -170,6 +174,66 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
     fileInput.files = e.dataTransfer.files;
     start();
   }, false);
+
+  // ------------------------------------------------------------------ paste
+
+  var hint = document.getElementById('paste-hint');
+  if (hint) {
+    // navigator.platform is deprecated and does not always follow the browser, so ask
+    // userAgentData first and fall back through both of the older answers.
+    var ua = navigator.userAgent || '';
+    var stated = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+    var mac = /mac|iphone|ipad|ipod/i.test(stated || navigator.platform || '')
+      || /Mac OS X|iPhone|iPad/.test(ua);
+    hint.textContent = 'or paste an image with ' + (mac ? '\u2318V' : 'Ctrl+V');
+  }
+
+  // A screenshot arrives with a useless name, or none at all, and the name becomes the
+  // reading's title. Give it something a person can pick out of the gallery later.
+  function renamed(file) {
+    var stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    var extension = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    if (file.name && !/^image\.\w+$/i.test(file.name)) { return file; }
+    try {
+      return new File([file], 'Pasted ' + stamp + '.' + extension, { type: file.type });
+    } catch (e) {
+      return file;               // older browsers: keep the original name
+    }
+  }
+
+  function imageFrom(data) {
+    if (!data) { return null; }
+    var items = data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && /^image\//.test(items[i].type || '')) {
+        var picked = items[i].getAsFile();
+        if (picked) { return renamed(picked); }
+      }
+    }
+    var files = data.files || [];
+    for (var j = 0; j < files.length; j++) {
+      if (/^image\//.test(files[j].type || '')) { return renamed(files[j]); }
+    }
+    return null;
+  }
+
+  document.addEventListener('paste', function (e) {
+    var target = e.target || {};
+    if (target.isContentEditable || /^(INPUT|TEXTAREA)$/.test(target.tagName || '')) {
+      return;                    // the paste belongs to whatever is focused
+    }
+    var image = imageFrom(e.clipboardData || window.clipboardData);
+    if (!image) { return; }      // text or nothing useful on the clipboard
+    e.preventDefault();
+    try {
+      var carrier = new DataTransfer();
+      carrier.items.add(image);
+      fileInput.files = carrier.files;
+    } catch (err) {
+      return;                    // cannot hand the form a file, so leave it alone
+    }
+    start();
+  });
 }());
 </script>
 </body>
