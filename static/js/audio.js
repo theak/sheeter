@@ -17,16 +17,22 @@
   var Ctx = window.AudioContext || window.webkitAudioContext;
 
   var ATTACK = 0.006;
-  var DECAY = 1.15;
+  //: Long enough that a strummed chord is still a chord by the time the top note lands.
+  //: The notes are 120ms apart, so a six-note voicing takes 600ms to roll out, and on the
+  //: old 1.15s decay the bottom note was down to 2% of its peak by then: six notes in a
+  //: row rather than one chord.  At 2.6s it is still near a fifth of peak and they ring
+  //: together.
+  var DECAY = 2.6;
   //: How fast a chord gets out of the way when the next one interrupts it.  Long enough
   //: not to click, short enough that stepping quickly does not turn into a smear.
   var RELEASE = 0.09;
   //: An exponential ramp cannot reach zero.  Ramping to it does nothing, or throws,
   //: depending on the browser, and the note appears to hang forever.
   var SILENT = 0.0001;
-  //: A chord struck dead flat sounds synthetic, and all the transients landing on one
-  //: sample sums into a click.  A few milliseconds between notes fixes both.
-  var SPREAD = 0.012;
+  //: The gap between one note of a chord and the next.  Wide enough to hear as a strum
+  //: rather than as a chord with a soft edge, which is the point: the notes arrive one at
+  //: a time so you can follow them, and still overlap into the chord they make.
+  var SPREAD = 0.12;
 
   var context = null;
   var master = null;
@@ -80,8 +86,10 @@
 
     // Chords here run from two notes to about eight.  Dividing the budget flat would
     // make the big ones inaudible, so it comes down gently with the count instead.
+    // The strum helps here too: the notes no longer all peak on the same sample.
     var level = 0.5 / Math.sqrt(midis.length);
 
+    // Already in playing order when it arrives: low to high, left hand before right.
     midis.forEach(function (midi, i) {
       var at = now + i * SPREAD;
       var osc = ctx.createOscillator();
