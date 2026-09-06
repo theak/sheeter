@@ -166,6 +166,8 @@
   white-space: nowrap;
 }
 .badge-ok { border-color: var(--sheeter-right); color: var(--sheeter-right); }
+.provenance-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.badge-warn { background: var(--pico-del-color, #c0392b); color: #fff; }
 
 .empty-state, .about, .foot { margin-top: 2rem; }
 .about h2, .empty-state h2 { font-size: 1.15rem; }

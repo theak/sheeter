@@ -106,11 +106,18 @@
     return String(name).replace(/b/g, '\u266d').replace(/#/g, '\u266f');
   }
 
+  // "G\u266f 4" rather than "G\u266f4": the octave is a separate thing from the note, and
+  // at label size the two run together.  Done at display time so every stored reading
+  // shows the same way, and the JSON keeps the compact form the rest of the code reads.
+  function spaced(name) {
+    return String(name).replace(/(\d+)$/, ' $1');
+  }
+
   // Note names read top to bottom on the page, and the schema sorts them low to high.
   function displayNames(part) {
     var out = [];
     for (var i = part.notes.length - 1; i >= 0; i--) {
-      out.push(part.notes[i].pretty || part.notes[i].name);
+      out.push(spaced(part.notes[i].pretty || part.notes[i].name));
     }
     return out;
   }
@@ -475,7 +482,7 @@
 
     detail.appendChild(el('h2', null, 'Step ' + step.number + ' of ' + steps.length));
 
-    var names = combined.pretty || combined.names || [];
+    var names = (combined.pretty || combined.names || []).map(spaced);
     detail.appendChild(el('p', 'chord-line', combined.symbol || names.join(' ') || 'no chord named'));
     if (combined.common_name) {
       detail.appendChild(el('p', 'common-name', combined.common_name));

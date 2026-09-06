@@ -1,4 +1,5 @@
 <%
+import re
 image = doc["image"]
 engine = doc["engine"]
 warnings = doc["warnings"] or []
@@ -46,7 +47,8 @@ for system in doc["systems"]:
         parts = []
         for part in event["parts"]:
             staff = by_index.get(part["staff"]) or {}
-            names = [note["pretty"] for note in part["notes"]]
+            # "G♯ 4" not "G♯4", the same spacing overlay.js uses on the labels.
+            names = [re.sub(r"(\d+)$", r" \1", note["pretty"]) for note in part["notes"]]
             names.reverse()
             parts.append({
                 "hand": HAND_LABEL.get(part["hand"]) or (
@@ -116,6 +118,12 @@ safe_json = analysis_json.replace("<", "\\u003C")
 % end
 
   <section class="provenance">
+% if stale:
+    <p><span class="badge badge-warn">Older reading</span>
+    This was read by version {{engine['geometry']}} of the reader; the current one is
+    version {{engine_version}} and reads some pages differently. Re-analyze to bring it up
+    to date. The photo is still here.</p>
+% end
 % if engine['verified']:
     <p><span class="badge badge-ok">Checked by Claude</span>
     The geometry reading was reviewed against the photo by
@@ -127,13 +135,21 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %   if engine['verifier_error']:
     <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
 %   end
-%   if verify_available:
-    <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form"
-          onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Asking Claude, this takes a few seconds';">
-      <button type="submit">Verify with Claude</button>
-    </form>
-%   end
 % end
+    <div class="provenance-actions">
+% if not engine['verified'] and verify_available:
+      <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form"
+            onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Asking Claude, this takes a few seconds';">
+        <button type="submit">Verify with Claude</button>
+      </form>
+% end
+      <!-- Always offered, not only when the reading is stale: after pulling a change to
+           the reader, this is how a page already in the gallery gets the new reading. -->
+      <form action="/a/{{analysis_id}}/reanalyze" method="post" class="inline-form"
+            onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Re-analyzing';">
+        <button type="submit" class="secondary">Re-analyze</button>
+      </form>
+    </div>
   </section>
 
 % if not doc['systems']:

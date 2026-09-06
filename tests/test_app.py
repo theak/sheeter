@@ -11,7 +11,7 @@ import urllib.parse
 import pytest
 from PIL import Image
 
-from sheeter import naming, pitches, schema, store
+from sheeter import geometry, naming, pitches, schema, store
 
 
 @pytest.fixture(autouse=True)
@@ -195,3 +195,95 @@ class TestPlayback:
                  for note in part["notes"]]
         assert notes
         assert all(isinstance(note["midi"], int) for note in notes)
+
+
+def post_file(app, path, raw, filename="photo.png", content_type="image/png"):
+    """POST one file as multipart form data, the way the upload form does."""
+    boundary = "----sheeter-test-boundary"
+    head = ('--%s\r\nContent-Disposition: form-data; name="file"; filename="%s"\r\n'
+            'Content-Type: %s\r\n\r\n' % (boundary, filename, content_type)).encode()
+    body = head + raw + ("\r\n--%s--\r\n" % boundary).encode()
+    environ = {
+        "REQUEST_METHOD": "POST", "PATH_INFO": path, "QUERY_STRING": "",
+        "SERVER_NAME": "testserver", "SERVER_PORT": "80",
+        "SERVER_PROTOCOL": "HTTP/1.1", "wsgi.url_scheme": "http",
+        "wsgi.input": io.BytesIO(body), "wsgi.errors": io.BytesIO(),
+        "CONTENT_LENGTH": str(len(body)),
+        "CONTENT_TYPE": "multipart/form-data; boundary=%s" % boundary,
+    }
+    captured = {}
+
+    def start_response(status, headers, exc_info=None):
+        captured["status"] = status
+        captured["headers"] = dict(headers)
+
+    chunks = app(environ, start_response)
+    return captured["status"], captured["headers"], b"".join(chunks)
+
+
+class TestReadingAgain:
+    """A reading made by an older engine is read again, not served as is.
+
+    Uploads are content addressed, so the same image always lands on the same analysis.
+    That is right while the reader is the same reader; after a fix it means the page
+    keeps showing the reading from before the fix.  This is the bug where a pull of
+    the branch that fixed a page appeared not to have fixed it.
+    """
+
+    @staticmethod
+    def stored(title, current):
+        """A stored reading of a blank image, made by an older engine or this one."""
+        raw = png_bytes()
+        doc = make_doc(raw, title)           # schema's default engine version is "1"
+        if current:
+            doc["engine"]["geometry"] = geometry.GEOMETRY_VERSION
+        assert (doc["engine"]["geometry"] == geometry.GEOMETRY_VERSION) is current
+        return store.save(doc, raw, "png", raw), raw
+
+    def test_reuploading_an_older_reading_reads_it_again_and_keeps_the_title(self, app):
+        ident, raw = self.stored("Bars 1 to 4", current=False)
+        status, headers, _ = post_file(app, "/upload", raw)
+        assert status.startswith("303") and headers["Location"].endswith("/a/" + ident)
+        doc = store.load(ident)
+        assert doc["engine"]["geometry"] == geometry.GEOMETRY_VERSION
+        assert doc["title"] == "Bars 1 to 4", "the reader's own title must survive"
+
+    def test_reuploading_a_current_reading_is_served_as_is(self, app):
+        ident, raw = self.stored("Bars 1 to 4", current=True)
+        status, headers, _ = post_file(app, "/upload", raw)
+        assert status.startswith("303") and headers["Location"].endswith("/a/" + ident)
+        doc = store.load(ident)
+        # make_doc has one system; a fresh reading of a blank image would have none.
+        assert len(doc["systems"]) == 1, "a current reading must not be recomputed"
+        assert doc["created_at"] == "2026-09-05T20:31:00Z"
+
+    def test_re_analyze_is_always_offered_and_the_stale_notice_only_when_stale(self, app):
+        # Two different images, so both readings are in the store at once.
+        old_raw, new_raw = png_bytes(width=601), png_bytes(width=602)
+        stale = store.save(make_doc(old_raw, "Old"), old_raw, "png", old_raw)
+        fresh_doc = make_doc(new_raw, "New")
+        fresh_doc["engine"]["geometry"] = geometry.GEOMETRY_VERSION
+        fresh = store.save(fresh_doc, new_raw, "png", new_raw)
+
+        _s, _h, body = call(app, "GET", "/a/%s" % stale)
+        page = body.decode("utf-8")
+        assert "Re-analyze" in page and "/a/%s/reanalyze" % stale in page
+        assert "Older reading" in page
+        _s, _h, body = call(app, "GET", "/a/%s" % fresh)
+        page = body.decode("utf-8")
+        assert "Re-analyze" in page, "offered whatever the version, that is the point"
+        assert "Older reading" not in page
+
+    def test_re_analyze_updates_the_engine_and_keeps_the_title(self, app):
+        ident, _raw = self.stored("Bars 1 to 4", current=False)
+        status, headers, _ = call(app, "POST", "/a/%s/reanalyze" % ident)
+        assert status.startswith("303") and headers["Location"].endswith("/a/" + ident)
+        doc = store.load(ident)
+        assert doc["engine"]["geometry"] == geometry.GEOMETRY_VERSION
+        assert doc["title"] == "Bars 1 to 4"
+        _s, _h, body = call(app, "GET", "/a/%s" % ident)
+        assert "Older reading" not in body.decode("utf-8"), "no longer stale"
+
+    def test_re_analyzing_something_that_is_gone_does_not_break(self, app):
+        status, _headers, _ = call(app, "POST", "/a/000000000000/reanalyze")
+        assert status.startswith("404")

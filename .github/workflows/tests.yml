@@ -78,14 +78,27 @@ jobs:
           except (OSError, ET.ParseError) as exc:
               sys.exit("could not read results.xml: %s" % exc)
 
+          # pytest writes an xfail into junit as <skipped type="pytest.xfail">.  Those
+          # are tests/test_pages.py's known-wrong readings, tracked on purpose and held
+          # strict in the other direction, so they are not the environment being wrong.
+          def is_skip(case):
+              mark = case.find("skipped")
+              return mark is not None and mark.get("type") != "pytest.xfail"
+
+          def is_xfail(case):
+              mark = case.find("skipped")
+              return mark is not None and mark.get("type") == "pytest.xfail"
+
           skipped = [(c.get("classname"), c.get("name"), c.find("skipped").get("message"))
-                     for c in cases if c.find("skipped") is not None]
+                     for c in cases if is_skip(c)]
+          xfailed = sum(1 for c in cases if is_xfail(c))
           errors = [c for c in cases if c.find("error") is not None]
           accuracy = [c for c in cases
                       if (c.get("classname") or "").startswith("tests.test_accuracy")
                       and c.find("skipped") is None and c.find("error") is None]
-          print("%d testcases, %d skipped, %d errored, %d accuracy tests ran"
-                % (len(cases), len(skipped), len(errors), len(accuracy)))
+          print("%d testcases, %d skipped, %d xfailed (expected), %d errored, "
+                "%d accuracy tests ran"
+                % (len(cases), len(skipped), xfailed, len(errors), len(accuracy)))
 
           for classname, name, why in skipped:
               print("::error::skipped %s::%s - %s" % (classname, name, why))

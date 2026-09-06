@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "about": [
+    "Real pages, read by the app and checked by a person.  The synthetic corpus in",
+    "tests/fixtures says what the geometry can do on engraving it has never seen fail;",
+    "this says what it does on the photocopied jazz voicings the app is actually for.",
+    "",
+    "Every note list here is ground truth a person supplied, unless the entry's note",
+    "says it was inferred.  null means nobody has checked that hand of that step.",
+    "known_wrong lists the entries the reader currently gets wrong, so they are tracked",
+    "rather than ignored: tests/test_pages.py fails when one of them starts passing,",
+    "which is the signal to move it out of known_wrong.",
+    "",
+    "Pitch names are ASCII, as in the fixture manifest: F#4, Bb2."
+  ],
+  "pages": [
+    {
+      "file": "giant_steps.png",
+      "source": "https://storage.googleapis.com/aks_public/giant_steps.png",
+      "note": "Giant Steps, first line, a textbook page photographed.  Every step annotated by the owner.  The reader currently finds 8 events for 6 chords: a lone F3 appears as a sixth event and a seventh is the last chord read twice, so steps after 5 do not line up by index.",
+      "key": 0,
+      "events": 6,
+      "steps": [
+        {"right": ["G#4", "C#5", "F#5"], "left": ["A#3", "D#4"]},
+        {"right": ["E4", "A4", "D5"],    "left": ["F#3", "B3", "C4"]},
+        {"right": ["D4", "F#4", "B4"],   "left": ["E3", "A3"]},
+        {"right": ["B3", "D4", "E4", "G#4"], "left": ["Bb2", "Ab3"]},
+        {"right": ["C4", "F4", "Bb4"],   "left": ["Eb3", "G3"]},
+        {"right": ["C4", "F4", "B4"],    "left": null}
+      ],
+      "known_wrong": ["events", "4.right", "6.right"]
+    },
+    {
+      "file": "giant_steps_crop.png",
+      "source": "https://storage.googleapis.com/aks_public/processed.png",
+      "note": "The same line of Giant Steps at lower resolution, as the app's own straightened output.  Same ground truth.  Step 3's F sharp is a sharp broken into pieces by staff line removal and not yet read; step 5's E flat in the left hand is missed; a seventh event is a false positive.",
+      "key": 0,
+      "events": 6,
+      "steps": [
+        {"right": ["G#4", "C#5", "F#5"], "left": ["A#3", "D#4"]},
+        {"right": ["E4", "A4", "D5"],    "left": ["F#3", "B3", "C4"]},
+        {"right": ["D4", "F#4", "B4"],   "left": ["E3", "A3"]},
+        {"right": ["B3", "D4", "E4", "G#4"], "left": ["Bb2", "Ab3"]},
+        {"right": ["C4", "F4", "Bb4"],   "left": ["Eb3", "G3"]},
+        {"right": ["C4", "F4", "B4"],    "left": null}
+      ],
+      "known_wrong": ["events", "3.right", "5.left"]
+    },
+    {
+      "file": "search_for_peace.png",
+      "source": "https://storage.googleapis.com/aks_public/searchforpeace.png",
+      "note": "Search for Peace.  The owner reported step 1 missing a right-hand note and its left-hand note, its E flat read as E, and step 5's F read as F sharp.  Step 1's G3 and A2 are inferred: they complete the A half-diminished the page labels the chord as, and are what the reader now finds.  Confirm them.  Step 5's left hand has two sharps fused with their noteheads into one shape that nothing reads yet, so it is unchecked.",
+      "key": 0,
+      "events": null,
+      "steps": [
+        {"right": ["G3", "C4", "Eb4"],  "left": ["A2"]},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": ["F4", "Bb4", "Eb5"], "left": null}
+      ],
+      "known_wrong": []
+    },
+    {
+      "file": "sophisticated_lady.png",
+      "source": "https://storage.googleapis.com/aks_public/sophisticated-lady.png",
+      "note": "Sophisticated Lady.  Steps 1 and 2 annotated by the owner.  The G in step 2 is G3, the octave the reader finds; the owner gave the letter only.",
+      "key": 0,
+      "events": null,
+      "steps": [
+        {"right": ["A3", "D4", "F#4"], "left": ["F2", "Eb3"]},
+        {"right": ["G3", "C4", "F4"],  "left": ["Bb2", "Db3"]}
+      ],
+      "known_wrong": []
+    }
+  ]
+}

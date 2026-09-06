@@ -22,7 +22,12 @@ from scipy.signal import fftconvolve
 from . import pitches
 from .preprocess import estimate_scale, run_lengths
 
-GEOMETRY_VERSION = "1"
+#: Bumped whenever a change can alter what the reader says about a page.  Stored
+#: analyses carry the version that produced them; the app reads one again on request,
+#: and on re-upload, when its version is not this one.  Without that, an image analysed
+#: before a fix keeps showing the reading from before the fix, forever, because uploads
+#: are content addressed and the old reading is what the address points at.
+GEOMETRY_VERSION = "2"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
@@ -489,36 +494,152 @@ def classify_accidental(comp):
     return ("natural" if stagger > 0.075 else "sharp"), centre
 
 
+#: An accidental's height and width in staff spaces, wide enough for every font.
+ACCIDENTAL_H = (1.85, 3.7)
+ACCIDENTAL_W = (0.22, 1.25)
+#: A half of a split cascade has to be a whole accidental, not a stroke of one.  The
+#: thinnest column of a lone sharp is the gap between its two strokes, and cutting there
+#: gives two "sharps" 0.4 and 0.6 wide that both classify.  Real accidentals measure
+#: 0.77 (natural) to 1.0 (sharp), so this is clear of both.
+CASCADE_HALF_W_MIN = 0.65
+
+
+def _accidental_sized(comp, unit, narrowest=ACCIDENTAL_W[0]):
+    h, w = comp["h"] / unit, comp["w"] / unit
+    return ACCIDENTAL_H[0] <= h <= ACCIDENTAL_H[1] and narrowest <= w <= ACCIDENTAL_W[1]
+
+
+def _holes(patch):
+    """How many regions of background *patch* encloses."""
+    _labels, count = ndimage.label(ndimage.binary_fill_holes(patch) & ~patch)
+    return count
+
+
+def _whole_accidental(comp, unit, narrowest=ACCIDENTAL_W[0]):
+    """Accidental sized, and closed: every accidental encloses some background.
+
+    The square of a sharp, the parallelogram of a natural, the bowl of a flat.  Nothing
+    else this size and shape does.  A stem with a notehead's edge on it is the right
+    height and width and has no hole, and classify_accidental, which only ever chooses
+    between the three kinds, called two of them sharps on one page: one sat first after
+    the bass clef, its letter happened to be F, and the whole page was read in G major.
+    """
+    return _accidental_sized(comp, unit, narrowest) and _holes(comp["patch"]) > 0
+
+
+def _trim_whiskers(comp, thickness):
+    """*comp* cut down to its glyph columns, or None when nothing is left.
+
+    The trimmed box matters beyond the width test: detect_noteheads drops noteheads
+    that overlap an accidental, so an inflated box reaching half a staff space past the
+    ink could swallow the very note the accidental belongs to.
+    """
+    span = _glyph_columns(comp["patch"], thickness)
+    if span is None:
+        return None
+    left, right = span
+    return dict(comp, patch=comp["patch"][:, left:right + 1],
+                x0=comp["x0"] + left, x1=comp["x0"] + right + 1, w=right - left + 1)
+
+
+def _crop_to_ink(patch):
+    """*patch* cut to its inked rows and columns: ``(sub, row_offset, col_offset)``."""
+    rows = np.flatnonzero(patch.any(axis=1))
+    cols = np.flatnonzero(patch.any(axis=0))
+    if rows.size == 0 or cols.size == 0:
+        return None
+    return (patch[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1], int(rows[0]), int(cols[0]))
+
+
+def _halves_at(comp, cut, unit, thickness):
+    """*comp* cut at column *cut*, if both sides are whole accidentals.  Else None.
+
+    Whole is the operative word.  A hollow notehead cut down the middle is a C with no
+    enclosed background, so the closed-shape test in _whole_accidental keeps a chord of
+    whole notes from passing as two accidentals, which a size test alone let through.
+    It also grades the cut itself: a cut through a sharp opens the square, so only a
+    cut between two glyphs leaves both halves closed.
+    """
+    patch = comp["patch"]
+    halves = []
+    for c0, c1 in ((0, cut), (cut, patch.shape[1])):
+        cropped = _crop_to_ink(patch[:, c0:c1])
+        if cropped is None:
+            return None
+        sub, dy, dx = cropped
+        half = _trim_whiskers({
+            "x0": comp["x0"] + c0 + dx, "x1": comp["x0"] + c0 + dx + sub.shape[1],
+            "y0": comp["y0"] + dy, "y1": comp["y0"] + dy + sub.shape[0],
+            "w": sub.shape[1], "h": sub.shape[0], "patch": sub,
+        }, thickness)
+        if half is None or not _whole_accidental(half, unit, CASCADE_HALF_W_MIN):
+            return None
+        half["cascade"] = True
+        halves.append(half)
+    return halves
+
+
+def _split_cascade(comp, unit, thickness):
+    """Two accidentals that touch, cut back into two.  None if that is not what this is.
+
+    A close voicing writes its accidentals in a diagonal cascade, and two of them that
+    touch are one connected component: about twice the ink of one, wider than one, and
+    taller than one because they are staggered.  Every such component used to fail the
+    size test and take both accidentals with it, and on a page of jazz voicings that was
+    most of the accidentals on the page.
+
+    The parent has to be at least one accidental tall, because two staggered accidentals
+    cannot be shorter than one: that alone rejects a 2.1 space tall smudge that
+    otherwise cut into two plausible "sharps".
+
+    Every cut across the middle is tried and the thinnest one that leaves two whole
+    accidentals wins.  Not just the thinnest column: the gap between a sharp's own two
+    strokes is as thin as the gap between two sharps, and on the first page this met,
+    argmin picked the former and cut a sharp in half.
+    """
+    patch = comp["patch"]
+    h, w = patch.shape
+    if not (2.6 <= h / unit <= 5.2 and 1.5 <= w / unit <= 2.5):
+        return None
+    cols = patch.sum(axis=0)
+    best = None
+    for cut in range(int(w * 0.3), int(w * 0.7)):
+        halves = _halves_at(comp, cut, unit, thickness)
+        if halves and (best is None or cols[cut] < cols[best[0]]):
+            best = (cut, halves)
+    return best[1] if best else None
+
+
 def detect_accidentals(mask_ns, band, unit, x_from=0, thickness=1):
     """Every flat, sharp and natural in a staff's band, left to right."""
     region = mask_ns[band[0]:band[1], x_from:]
     found = []
     for comp in _components(region, int(unit * unit * 0.12)):
-        span = _glyph_columns(comp["patch"], thickness)
-        if span is None:
+        # Measure, classify and place each glyph on its own ink.  Whiskers first, so a
+        # lone sharp that only looked wide is accepted as one and never offered to the
+        # split, whose one false positive is exactly a lone sharp cut down the middle.
+        comp = _trim_whiskers(comp, thickness)
+        if comp is None:
             continue
-        # Measure, classify and place the glyph on its own ink.  The trimmed box matters
-        # beyond the width test: detect_noteheads drops noteheads that overlap an
-        # accidental, so an inflated box reaching half a staff space past the ink could
-        # swallow the very note the accidental belongs to.
-        left, right = span
-        comp = dict(comp, patch=comp["patch"][:, left:right + 1],
-                    x0=comp["x0"] + left, x1=comp["x0"] + right + 1,
-                    w=right - left + 1)
-        ratio_h, ratio_w = comp["h"] / unit, comp["w"] / unit
-        if not (1.85 <= ratio_h <= 3.7 and 0.22 <= ratio_w <= 1.25):
+        if _whole_accidental(comp, unit):
+            candidates = [comp]
+        else:
+            candidates = _split_cascade(comp, unit, thickness) or []
+        # A pair stands or falls together: one half that does not classify means the
+        # cut was wrong, not that the other half is an accidental.
+        kinds = [classify_accidental(c) for c in candidates]
+        if not kinds or any(kind is None for kind, _ in kinds):
             continue
-        kind, offset = classify_accidental(comp)
-        if kind is None:
-            continue
-        found.append({
-            "kind": kind,
-            "x": x_from + (comp["x0"] + comp["x1"]) / 2.0,
-            "x0": x_from + comp["x0"], "x1": x_from + comp["x1"],
-            "y": band[0] + comp["y0"] + offset,
-            "y0": band[0] + comp["y0"], "y1": band[0] + comp["y1"],
-            "h": comp["h"],
-        })
+        for cand, (kind, offset) in zip(candidates, kinds):
+            found.append({
+                "kind": kind,
+                "x": x_from + (cand["x0"] + cand["x1"]) / 2.0,
+                "x0": x_from + cand["x0"], "x1": x_from + cand["x1"],
+                "y": band[0] + cand["y0"] + offset,
+                "y0": band[0] + cand["y0"], "y1": band[0] + cand["y1"],
+                "h": cand["h"],
+                "cascade": cand.get("cascade", False),
+            })
     found.sort(key=lambda a: a["x"])
     return found
 
@@ -610,7 +731,44 @@ def _ledger_row_ok(mask, x, staff, unit, thickness, k):
     return reach_out >= unit * 0.78
 
 
-def time_signature_edge(mask_ns, staff, band, unit, x_from):
+def _longest_run(column, tolerate):
+    """Longest run of ink down *column*, treating gaps of *tolerate* or fewer as ink.
+
+    Staff line removal can nick a stem where a line crossed it; a nick is never wider
+    than the line was thick, and must not read as the stem ending.
+    """
+    edges = np.diff(np.r_[0, column.astype(int), 0])
+    starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    best = 0
+    for i, start in enumerate(starts):
+        end = ends[i]
+        j = i
+        while j + 1 < len(starts) and starts[j + 1] - ends[j] <= tolerate:
+            j += 1
+            end = ends[j]
+        best = max(best, end - start)
+    return best
+
+
+def _has_stem(patch, thickness):
+    """Is there a thin stroke running unbroken down at least 80% of *patch*'s height?
+
+    Unbroken is the point.  A fused 4/4 has its two uprights in the same columns, and
+    summed they hold as much ink as a stem does; what they never make is one run.  A
+    test with exactly that glyph is what caught the version that only counted ink.
+    """
+    height = patch.shape[0]
+    stemlike = np.zeros(patch.shape[1], dtype=bool)
+    for x in range(patch.shape[1]):
+        column = patch[:, x]
+        if column.sum() >= 0.8 * height:
+            stemlike[x] = _longest_run(column, thickness) >= 0.8 * height
+    edges = np.diff(np.r_[0, stemlike.astype(int), 0])
+    starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    return any(end - start <= 2 * thickness for start, end in zip(starts, ends))
+
+
+def time_signature_edge(mask_ns, staff, band, unit, x_from, thickness=1):
     """Right edge of the time signature, or *x_from* if there is none.
 
     Digits score well enough against a notehead outline to be read as notes, so they
@@ -643,6 +801,7 @@ def time_signature_edge(mask_ns, staff, band, unit, x_from):
             "x0": comp["x0"], "x1": comp["x1"], "h": comp["h"],
             "cx": (comp["x0"] + comp["x1"]) / 2.0,
             "offset": (centre - middle) / unit,
+            "patch": comp["patch"],
         })
 
     best = None
@@ -663,6 +822,13 @@ def time_signature_edge(mask_ns, staff, band, unit, x_from):
     if best is None:
         for glyph in glyphs:
             if abs(glyph["offset"]) <= 0.9 and glyph["h"] >= unit * 2.6:
+                # A note on the middle line with its stem up is also a single tall
+                # component centred on the middle line, and on one page it was the
+                # first left-hand note, which this then walked the notehead search
+                # straight past.  Digits have no stroke running most of their height:
+                # the upright of a 4 is under half of a fused pair's height.
+                if _has_stem(glyph["patch"], thickness):
+                    continue
                 if best is None or glyph["x0"] < best[1]:
                     best = (glyph["x1"], glyph["x0"])
     if best is None:
@@ -705,12 +871,20 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
     measure, and no shape test is going to separate them.  An accidental is always clear
     of the notehead it belongs to, so ruling out its box costs nothing.
     """
-    region = mask_ns[band[0]:band[1], :]
+    # Correlate over a little more than the band, then keep only peaks whose centre is
+    # inside it.  The band ends at the midpoint to the next staff so that a grand staff
+    # never counts one notehead twice, and ownership still works that way.  But a
+    # notehead centred half a space inside that edge has its template hanging off the
+    # end of the region, scores low, and is lost: on two pages that was a right-hand
+    # note reaching down into the gap, the lowest note of its chord each time.
+    pad = int(round(unit * 1.2))
+    lo, hi = max(0, band[0] - pad), min(mask_ns.shape[0], band[1] + pad)
+    region = mask_ns[lo:hi, :]
     if not region.any():
         return []
 
     rims, sides, core = notehead_kernels(unit)
-    erased = mask[band[0]:band[1], :] & ~region
+    erased = mask[lo:hi, :] & ~region
     response = _outline_response(region, erased, rims)
     # The flanks of the outline are what separate a notehead from the gap between two
     # stacked a third apart.  That gap has the bottom of one notehead above it and the
@@ -740,7 +914,9 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
     for cy, cx in centres:
         if cx < x_from:
             continue
-        y = band[0] + cy
+        y = lo + cy
+        if not band[0] <= y < band[1]:
+            continue        # the neighbouring staff's, and it will find it
         step, err = pitches.y_to_step(y, staff["lines"], "treble")  # clef applied later
         if err > unit * GRID_TOLERANCE:
             continue
@@ -801,6 +977,10 @@ def key_signature_run(accidentals, clef_end, unit):
     run, cursor, spacing = [], clef_end, unit * 2.6
     for acc in accidentals:
         if acc["x0"] - cursor > spacing:
+            break
+        # Key signatures are engraved with clear space between the glyphs.  Two that
+        # touched came from a chord, and a chord's accidentals are the end of the run.
+        if acc.get("cascade"):
             break
         spacing = unit * 1.8      # the first sits clear of the clef, the rest are tight
         if run and acc["kind"] != run[0]["kind"]:
@@ -1177,18 +1357,44 @@ def _assign_clefs(members):
 def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thickness,
                  system_index, width, height, warnings):
     per_staff, staff_docs, key_ends = {}, [], {}
+
+    # Accidentals and leading runs for every staff first, because whether a run is a
+    # signature is partly a question about the other staff.  Both staves of a grand
+    # staff carry the same signature, so a sharp run on one and a flat run on the other
+    # means neither is one: they are the first chord's own accidentals.  Nothing about
+    # the run itself can tell.  On the page this came from, the treble's first chord had
+    # a written F sharp 1.35 spaces after the clef, which is exactly where a G major
+    # signature sits and reads as one at full confidence; only the bass's E flat at the
+    # same x said otherwise, and the whole page was in G major until it was asked.
+    found = []
+    for member in members:
+        accidentals = detect_accidentals(cleaned, member["band"], unit,
+                                         member["clef_end"], thickness)
+        found.append((accidentals, key_signature_run(accidentals, member["clef_end"],
+                                                     unit)))
+    kinds = set(run[0]["kind"] for _accidentals, run in found if run)
+    signatures_disagree = len(kinds) > 1
+
     for position, member in enumerate(members):
         staff, band, clef = member["staff"], member["band"], member["clef"]
         stems = detect_stems(cleaned, band, unit)
-        accidentals = detect_accidentals(cleaned, band, unit, member["clef_end"],
-                                         thickness)
+        accidentals, key_used = found[position]
+        if signatures_disagree:
+            key_used = []
 
         # Order matters: the key signature has to be read before the time signature can
         # be looked for, because it is what decides where the time signature starts.
-        key_used = key_signature_run(accidentals, member["clef_end"], unit)
         fifths, key_conf = read_key_signature(key_used, staff, clef)
+        if key_used and key_conf < 0.9:
+            # The letters did not follow the fixed order, which read_key_signature
+            # takes to mean a stray glyph was swept into the run.  On a page with no
+            # signature and no time signature the stray glyph is the first chord's own
+            # accidental, and consuming it lost the flat off an E flat.  Hand the run
+            # back to the chord; there is no signature here.
+            key_used, fifths, key_conf = [], 0, 0.9
         key_end = key_used[-1]["x1"] if key_used else member["clef_end"]
-        time_end, _time_start = time_signature_edge(cleaned, staff, band, unit, key_end)
+        time_end, _time_start = time_signature_edge(cleaned, staff, band, unit, key_end,
+                                                    thickness)
         notes = detect_noteheads(mask, cleaned, staff, band, unit, thickness, time_end,
                                  accidentals)
 
@@ -1248,7 +1454,7 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
                 "duration_hint": hint,
                 "dotted": any(n.get("dotted") for n in entry["notes"]),
                 "notes": [_note_doc(n) for n in
-                          sorted(entry["notes"], key=lambda n: -n["y"])],
+                          sorted(_one_per_step(entry["notes"]), key=lambda n: -n["y"])],
                 "chord": None,
             })
         if not parts:
@@ -1300,6 +1506,21 @@ def _reconcile_keys(staff_docs, per_staff, members):
         notes = [note for cluster in per_staff.get(position, []) for note in cluster]
         apply_alterations(notes, best["key_fifths"],
                           [s["x"] for s in members[position]["stems"] if s["barline"]])
+
+
+def _one_per_step(notes):
+    """A chord has one notehead per line or space.  Keep the strongest of any doubles.
+
+    Two noteheads at one step in one part is never what is on the page, it is one head
+    read twice, or an accidental that went undetected and was read as a head in its own
+    right.  Better detection removes most of these at the source; this is the guarantee
+    that none of them reach the reader.  Across the whole corpus no part repeats a
+    pitch, so nothing real is lost to it.
+    """
+    best = {}
+    for note in sorted(notes, key=lambda n: -n.get("response", 0.0)):
+        best.setdefault(note["step"], note)
+    return list(best.values())
 
 
 def _note_doc(note):

@@ -8,7 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, redirect, request, response, static_file, template
 
-from sheeter import pipeline, store, verify
+from sheeter import geometry, pipeline, store, verify
 
 app = Bottle()
 
@@ -90,25 +90,58 @@ def upload():
     content_type = upload_file.content_type or "image/jpeg"
     extension = EXTENSIONS.get(content_type.split(";")[0].strip().lower(), "img")
 
+    # The same bytes always get the same id.  If that reading exists and the engine
+    # that made it is the one running now, it is the answer.  If an older engine made
+    # it, read the page again: otherwise an image analysed before a fix shows the
+    # reading from before the fix for as long as it is in the store.
     existing = pipeline.analysis_id(raw)
-    if store.exists(existing):
+    previous = _load(existing) if store.exists(existing) else None
+    if previous is not None and _current(previous):
         return redirect("/a/%s" % existing)
 
     try:
-        document, processed = pipeline.analyze_bytes(
-            raw, upload_file.raw_filename, content_type)
+        analysis_id = _analyze_and_save(raw, upload_file.raw_filename, content_type,
+                                        extension, previous)
     except Exception:
         traceback.print_exc()
         return _render_index(
             "Could not read that image. It may be an unsupported format, or too "
             "small to find any staff lines in.", 400)
+    return redirect("/a/%s" % analysis_id)
 
+
+def _current(document):
+    """Was this reading made by the engine that is running now?"""
+    return document["engine"].get("geometry") == geometry.GEOMETRY_VERSION
+
+
+def _analyze_and_save(raw, filename, content_type, extension, previous=None):
+    """Read *raw* and store the result.  Returns the analysis id.
+
+    *previous* is the reading being replaced, if any; its title is kept, because the
+    reader may have renamed it and a better reading of the same page is still that page.
+    """
+    document, processed = pipeline.analyze_bytes(
+        raw, filename, content_type, title=previous["title"] if previous else None)
     if VERIFY_MODE == "auto" and verify.available():
         document = verify.verify_analysis(document, processed)
         pipeline.name_everything(document)
+    return store.save(document, raw, extension, processed)
 
-    analysis_id = store.save(document, raw, extension, processed)
-    return redirect("/a/%s" % analysis_id)
+
+def _reanalyze(analysis_id):
+    """Run the current engine over a stored upload.  Returns the id, or None."""
+    previous = _load(analysis_id)
+    name = store.original_name(analysis_id)
+    if previous is None or name is None:
+        return None
+    extension = name.split(".", 1)[1]
+    content_type = next((mime for mime, ext in EXTENSIONS.items() if ext == extension),
+                        "image/jpeg")
+    with open(store.path(analysis_id, name), "rb") as handle:
+        raw = handle.read()
+    filename = (previous.get("source") or {}).get("filename") or name
+    return _analyze_and_save(raw, filename, content_type, extension, previous)
 
 
 def _load(analysis_id):
@@ -126,7 +159,9 @@ def show(analysis_id):
     return template("analysis.html", doc=document,
                     analysis_json=json.dumps(document),
                     items=store.listing(limit=12),
-                    verify_available=_verify_offered())
+                    verify_available=_verify_offered(),
+                    stale=not _current(document),
+                    engine_version=geometry.GEOMETRY_VERSION)
 
 
 @app.route("/a/<analysis_id>/analysis.json")
@@ -183,6 +218,19 @@ def rename(analysis_id):
         except (KeyError, ValueError):
             pass
     return redirect(target)
+
+
+@app.route("/a/<analysis_id>/reanalyze", method="POST")
+def reanalyze(analysis_id):
+    """Read a stored page again with the engine that is running now."""
+    try:
+        done = _reanalyze(analysis_id)
+    except Exception:
+        traceback.print_exc()
+        done = None
+    if done is None:
+        return _render_index("That analysis could not be re-analyzed.", 404)
+    return redirect("/a/%s" % analysis_id)
 
 
 @app.route("/a/<analysis_id>/delete", method="POST")
