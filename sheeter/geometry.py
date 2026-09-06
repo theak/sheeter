@@ -348,38 +348,79 @@ def staff_band(staves, index, unit, height):
     return max(0, int(top)), min(height, int(bottom))
 
 
+def _thin_verticals(mask, unit):
+    """Barlines, braces and stems: tall, and no wider than a third of a staff space."""
+    height = max(3, int(round(unit * 1.5)))
+    tall = ndimage.binary_opening(mask, structure=np.ones((height, 1)))
+    narrow = run_lengths(mask.T).T <= max(2, int(round(unit * 0.35)))
+    return tall & narrow
+
+
 def detect_clef(mask_ns, staff, band, unit):
     """Identify the clef at the left edge of a staff.
 
-    A treble clef is enormous, spanning well past both outer lines; a bass clef is
-    about two and a half spaces and hangs from the top line.  Height alone separates
-    them cleanly, and there are only two clefs in scope.
+    Told apart by where the glyph sits against the staff, not by how tall it is.  A
+    treble clef wraps the second line from the bottom and its tail runs on past the
+    bottom line; a bass clef hangs from the second line from the top and stops well
+    short of the bottom.  Height was the old test and it is the wrong one: it calls
+    anything tall enough a treble clef, so an oversized bass clef, a first chord with a
+    long stem, or a clef with the opening barline welded to it all read as treble, and
+    a whole staff then comes out a twelfth from where it should be.
+
+    Braces, barlines and stems are stripped first for that reason.  Left in, they join
+    the clef into one component that spans the band, and every test here reads that as
+    a treble clef whatever the clef actually is.
     """
     x0, x1 = staff["x_range"]
-    search = mask_ns[band[0]:band[1], x0:min(x1, int(x0 + unit * 7))]
+    left = max(0, int(x0 - unit))
+    right = min(x1, int(x0 + unit * 7))
+    if right <= left:
+        return None, 0.0, x0
+    search = mask_ns[band[0]:band[1], left:right]
     if not search.any():
         return None, 0.0, x0
+    solid = search & ~_thin_verticals(search, unit)
+
     best = None
-    for comp in _components(search, int(unit * unit * 0.25)):
-        if comp["h"] < unit * 1.8:
+    for comp in _components(solid, int(unit * unit * 0.2)):
+        if comp["h"] < unit * 1.6 or comp["w"] < unit * 0.7:
             continue
-        # A brace and the opening barline are taller than a bass clef and sit further
-        # left, so height and position alone pick the wrong glyph on a grand staff.
-        # Both are hairline thin; a clef of either kind is over two spaces wide.
-        if comp["w"] < unit * 0.8:
-            continue
+        if comp["x0"] > unit * 4.0:
+            continue        # a clef sits at the staff's edge, not out among the notes
         if best is None or comp["x0"] < best["x0"]:
             best = comp
     if best is None:
         return None, 0.0, x0
-    ratio = best["h"] / unit
-    if ratio >= 4.0:
-        clef, confidence = "treble", min(1.0, 0.6 + (ratio - 4.0) * 0.15)
-    elif ratio >= 1.9:
-        clef, confidence = "bass", min(1.0, 0.55 + (3.2 - abs(ratio - 2.8)) * 0.12)
+
+    top = band[0] + best["y0"]
+    bottom = band[0] + best["y1"]
+    below = (bottom - staff["lines"][-1]) / unit     # past the bottom line, in spaces
+    above = (staff["lines"][0] - top) / unit         # past the top line
+
+    # How far the glyph reaches above the top line is the one thing that separates the
+    # two cleanly.  Measured across all five music fonts Verovio ships: a bass clef
+    # comes in between -0.15 and +0.06 spaces above the line, a treble clef between
+    # +0.49 and +1.46.
+    #
+    # Height looks like it should work and does not.  It runs 1.8 to 3.7 spaces for a
+    # bass clef and 4.7 to 7.0 for a treble one, which separates on a clean render, but
+    # it is exactly what a photocopy ruins: thickened ink measured a bass clef at 5.5
+    # spaces, the old height test called it a treble clef, and a whole staff came out a
+    # twelfth from where it should be with nothing about the result looking wrong.  How
+    # far the glyph reaches above the line barely moves under the same thickening.
+    if above >= 0.30:
+        clef = "treble"
+        confidence = min(0.99, 0.72 + min(above - 0.30, 0.7) * 0.38)
+    elif above <= 0.20:
+        clef = "bass"
+        confidence = min(0.99, 0.72 + min(0.20 - above, 0.7) * 0.38)
     else:
-        return None, 0.0, x0
-    return clef, round(float(confidence), 2), x0 + best["x1"]
+        # Cannot say which clef it is, but it is still a glyph at the left edge, so the
+        # search for noteheads must start after it either way.  Returning the staff's
+        # own left edge here puts the clef back inside the search and it gets read as
+        # a note or two.
+        return None, 0.0, left + best["x1"]
+    return clef, round(float(confidence), 2), left + best["x1"]
 
 
 def classify_accidental(comp):
@@ -1078,6 +1119,15 @@ def _assign_clefs(members):
             member["clef"] = "treble" if position == 0 else "bass"
             member["clef_conf"] = 0.4
     if len(members) == 2:
+        # Two staves braced together are a piano part, so the same clef on both is far
+        # more often one of them misread than a real pair of matching clefs.  Only
+        # overturn a reading the glyph test was not sure of.
+        upper, lower = members
+        if upper["clef"] == lower["clef"]:
+            weaker = lower if lower["clef_conf"] <= upper["clef_conf"] else upper
+            if weaker["clef_conf"] < 0.9:
+                weaker["clef"] = "bass" if weaker is lower else "treble"
+                weaker["clef_conf"] = 0.45
         members[0]["hand"], members[1]["hand"] = "right", "left"
     else:
         for member in members:

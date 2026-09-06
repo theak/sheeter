@@ -4,6 +4,8 @@ These build their own images rather than leaning on the fixture corpus, so they 
 milliseconds and pin down the primitives the whole pipeline is balanced on.
 """
 
+import os
+
 import numpy as np
 import pytest
 
@@ -193,3 +195,80 @@ class TestPreprocess:
         from scipy import ndimage
         tilted = ndimage.rotate(gray, -2.5, reshape=False, order=1, cval=255)
         assert preprocess.estimate_skew(tilted) == pytest.approx(2.5, abs=0.6)
+
+
+class TestClef:
+    """A misread clef is the worst failure this reader has.
+
+    Nothing looks wrong: the noteheads are found, the chord is named, the overlay lines
+    up. Every pitch on that staff is just a twelfth out, because the treble and bass
+    reference lines are twelve diatonic steps apart. It is silent and total, so the
+    detector has to be robust to the things a real page does to a glyph.
+    """
+
+    FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "grand_2flats.png")
+
+    def _staves(self, mask):
+        thickness, unit = geometry.estimate_scale(mask)
+        staves = geometry.find_staves(mask, thickness, unit)
+        lines = geometry.staff_line_mask(mask, thickness, unit, 2.0)
+        cleaned = geometry.remove_staff_lines(mask, lines, thickness, unit)
+        return staves, cleaned, unit, mask.shape[0]
+
+    @pytest.fixture
+    def page(self):
+        from sheeter import preprocess as pre
+
+        if not os.path.isfile(self.FIXTURE):
+            pytest.skip("run tools/make_fixtures.py first")
+        with open(self.FIXTURE, "rb") as handle:
+            _gray, mask, _info = pre.prepare(handle.read())
+        return mask
+
+    def _read(self, mask):
+        staves, cleaned, unit, height = self._staves(mask)
+        out = []
+        for index in range(len(staves)):
+            band = geometry.staff_band(staves, index, unit, height)
+            out.append(geometry.detect_clef(cleaned, staves[index], band, unit)[0])
+        return out
+
+    def test_reads_a_grand_staff(self, page):
+        assert self._read(page) == ["treble", "bass"]
+
+    def test_a_blotted_bass_clef_is_still_a_bass_clef(self, page):
+        """The real one. A photocopied book page thickens every stroke, and a bass clef
+        fattened that way measured 5.47 staff spaces tall. The detector used to call
+        anything over 4 a treble clef, so the whole left hand came out a twelfth high
+        while looking perfectly plausible."""
+        from scipy import ndimage
+
+        staves, _cleaned, unit, _height = self._staves(page)
+        lower = staves[1]
+        left = lower["x_range"][0]
+        box = (slice(int(lower["lines"][0] - unit), int(lower["lines"][-1] + unit)),
+               slice(max(0, left - int(unit)), left + int(unit * 3)))
+        blotted = page.copy()
+        blotted[box] = ndimage.binary_dilation(blotted[box], structure=np.ones((5, 5)))
+        assert self._read(blotted) == ["treble", "bass"]
+
+    def test_a_barline_welded_to_the_clef_does_not_change_it(self, page):
+        """Braces, opening barlines and stems are stripped before the glyph is measured.
+        Left in, they join it into one component spanning the whole band."""
+        staves, _cleaned, unit, _height = self._staves(page)
+        upper, lower = staves[0], staves[1]
+        left = lower["x_range"][0]
+        welded = page.copy()
+        welded[int(upper["lines"][0]):int(lower["lines"][-1] + unit * 2),
+               max(0, left - 2):left + int(unit * 0.5)] = True
+        assert self._read(welded) == ["treble", "bass"]
+
+    def test_a_long_stem_below_the_staff_is_not_a_clef(self, page):
+        staves, _cleaned, unit, _height = self._staves(page)
+        lower = staves[1]
+        left = lower["x_range"][0]
+        stemmed = page.copy()
+        bottom = int(lower["lines"][-1])
+        stemmed[bottom:bottom + int(unit * 5),
+                left + int(unit * 5):left + int(unit * 5) + 3] = True
+        assert self._read(stemmed) == ["treble", "bass"]
