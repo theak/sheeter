@@ -131,11 +131,12 @@ the box for a flag and 0.00 to 0.17 for a plain quarter: they do not separate, s
 labels some notes wrongly. There are no ties, no tuplets, and nothing that adds up to a bar.
 - **Two voices in one staff.** Noteheads sharing an x position in a staff become one chord, so
 independent voices collapse into each other.
-- **Accidentals in a tight voicing.** Written sharps and flats are found as connected shapes, so
-two that touch each other are one shape and neither is read. Close jazz voicings stack them in a
-diagonal cascade where that happens often. Worse, a missed accidental is not just a missing sharp:
-noteheads are detected everywhere except where an accidental was found, so an undetected one gets
-read as a notehead or two of its own, and a three-note chord comes back with five notes in it.
+- **An accidental touching its own notehead.** Written sharps and flats are found as connected
+shapes. Two accidentals that touch each other in a cascade are cut back apart, but an accidental
+fused with the notehead it belongs to, or with a stem, is one shape with a notehead in it and is
+not read. Worse, a missed accidental is not just a missing sharp: noteheads are detected everywhere
+except where an accidental was found, so an undetected one gets read as a notehead or two of its
+own, and a three-note chord comes back with five notes in it.
 - **A clef change mid-staff.** The clef is read once, from the left edge of each staff, and holds
 for the whole line.
 - **Music cropped at the frame edge.** It notices (`cut_off`, and a warning on the page) but it
@@ -278,6 +279,14 @@ On Ubuntu:
 
 Every fixture is seeded from its case name, so two runs produce byte-identical output. Without
 them the accuracy tests skip rather than fail.
+
+There is a second, smaller set that is not generated: `tests/pages/` holds real pages, photocopied
+jazz voicings, with what a person said is on them in `manifest.json`. That is where the reader has
+actually failed, and every fix to the geometry since was made against one of them. Its test is
+strict in both directions: a step the manifest says is right must read right, and a step listed in
+`known_wrong` must still read wrong, so a fix that lands by accident gets noticed and promoted
+rather than quietly relied on. Adding a page is a PNG, its ground truth, and a note saying which
+values a person checked and which were inferred.
 
 ### Why there is no SDK
 
