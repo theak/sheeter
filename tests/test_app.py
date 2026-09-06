@@ -5,6 +5,7 @@ about, and renaming takes a redirect target from the form, which is worth pinnin
 """
 
 import io
+import json
 import urllib.parse
 
 import pytest
@@ -155,3 +156,42 @@ class TestGallery:
         store.rename(saved, "Bars 18 and 19")
         _status, _headers, body = call(app, "GET", "/")
         assert 'value="Bars 18 and 19"' in body.decode("utf-8")
+
+
+class TestPlayback:
+    """What the server is responsible for: shipping the player and its button.
+
+    Whether a triangle oscillator actually sounds is not something a WSGI call can
+    answer, and these do not pretend to.  They cover the ways the feature silently
+    fails to arrive: a script that 404s, or a button that never renders.
+    """
+
+    def test_serves_the_audio_module(self, app):
+        status, headers, body = call(app, "GET", "/static/js/audio.js")
+        assert status.startswith("200")
+        assert "javascript" in dict(headers).get("Content-Type", "")
+        assert b"SheeterAudio" in body
+
+    def test_the_analysis_page_loads_it_before_the_overlay(self, app, saved):
+        _status, _headers, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        # overlay.js reads window.SheeterAudio at startup, so the order is load bearing.
+        assert page.index("/static/js/audio.js") < page.index("/static/js/overlay.js")
+
+    def test_offers_a_sound_toggle_that_starts_on(self, app, saved):
+        _status, _headers, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        assert 'id="sound-toggle"' in page
+        # Playback is on by default, so the button starts pressed.
+        assert 'aria-pressed="true"' in page.split('id="sound-toggle"')[1][:80]
+
+    def test_every_note_carries_the_midi_the_player_needs(self, app, saved):
+        _status, _headers, body = call(app, "GET", "/a/%s/analysis.json" % saved)
+        doc = json.loads(body)
+        notes = [note
+                 for system in doc["systems"]
+                 for event in system["events"]
+                 for part in event["parts"]
+                 for note in part["notes"]]
+        assert notes
+        assert all(isinstance(note["midi"], int) for note in notes)

@@ -239,7 +239,7 @@
     mark.appendChild(dot);
     mark.setAttribute('aria-label', 'Step ' + step.number + ' of ' + steps.length +
       (combined.symbol ? ', ' + combined.symbol : ''));
-    mark.addEventListener('click', function () { select(step.number, false); });
+    mark.addEventListener('click', function () { select(step.number, false, true); });
     labels.appendChild(mark);
     marks.push(mark);
   });
@@ -255,7 +255,7 @@
     pill.setAttribute('aria-label',
       'Step ' + step.number + ', ' + tagText + ', ' + lines.join(' '));
     if ((step.event.confidence || 0) < 0.7) { pill.classList.add('low'); }
-    pill.addEventListener('click', function () { select(step.number, false); });
+    pill.addEventListener('click', function () { select(step.number, false, true); });
     pill.__anchor = anchor;
     labels.appendChild(pill);
     pills.push(pill);
@@ -542,11 +542,11 @@
     var previous = el('button', 'secondary outline', 'Previous step');
     previous.type = 'button';
     previous.disabled = step.number <= 1;
-    previous.addEventListener('click', function () { select(step.number - 1, true); });
+    previous.addEventListener('click', function () { select(step.number - 1, true, true); });
     var next = el('button', 'secondary outline', 'Next step');
     next.type = 'button';
     next.disabled = step.number >= steps.length;
-    next.addEventListener('click', function () { select(step.number + 1, true); });
+    next.addEventListener('click', function () { select(step.number + 1, true, true); });
     nav.appendChild(previous);
     nav.appendChild(next);
     detail.appendChild(nav);
@@ -554,11 +554,66 @@
 
   var rows = document.querySelectorAll('.reading tbody tr');
 
-  function select(number, scrollToDetail) {
+  // ---------------------------------------------------------------- playback
+
+  var audio = window.SheeterAudio;
+  var soundButton = document.getElementById('sound-toggle');
+  // The stored value is the mute, so a reader who has never touched the button gets
+  // sound.  Absent audio, muted stays true and nothing below ever tries to make a noise.
+  var muted = !(audio && audio.supported) || recall('muted', '0') === '1';
+
+  function stepMidis(step) {
+    var midis = [];
+    (step.event.parts || []).forEach(function (part) {
+      (part.notes || []).forEach(function (note) {
+        if (typeof note.midi === 'number') { midis.push(note.midi); }
+      });
+    });
+    // Both hands at once, low to high, which is the chord as it would actually be played.
+    midis.sort(function (a, b) { return a - b; });
+    return midis;
+  }
+
+  function playStep(step) {
+    if (muted || !audio || !audio.supported) { return; }
+    audio.play(stepMidis(step));
+  }
+
+  function setMuted(next, remember) {
+    muted = !!next;
+    if (audio && audio.supported) { audio.setMuted(muted); }
+    if (soundButton) {
+      soundButton.setAttribute('aria-pressed', String(!muted));
+      soundButton.textContent = muted ? 'Sound off' : 'Sound on';
+      soundButton.setAttribute('aria-label',
+        muted ? 'Sound off, turn chord playback on' : 'Sound on, turn chord playback off');
+    }
+    if (remember) { store('muted', muted ? '1' : '0'); }
+  }
+
+  if (soundButton && audio && audio.supported) {
+    setMuted(muted, false);
+    soundButton.addEventListener('click', function () {
+      setMuted(!muted, true);
+      // Unmuting with a step already open should prove it worked, and the click is the
+      // gesture that lets the audio context start in the first place.
+      if (!muted && selected) { playStep(steps[selected - 1]); }
+    });
+  } else if (soundButton) {
+    // No Web Audio: a mute button for silence that was never going to be broken.
+    soundButton.hidden = true;
+  }
+
+  // fromUser says a person asked for this step, as opposed to the page settling itself.
+  // Only a person's choice makes a sound, which is also what keeps the audio context's
+  // first use inside a real gesture where the autoplay rules want it.
+  function select(number, scrollToDetail, fromUser) {
     if (number < 1 || number > steps.length) { return; }
     selected = number;
     var step = steps[number - 1];
     var i;
+
+    if (fromUser) { playStep(step); }
 
     for (i = 0; i < pills.length; i++) {
       pills[i].classList.toggle('selected', pills[i].dataset.step === String(number));
@@ -625,7 +680,7 @@
   for (var r = 0; r < rows.length; r++) {
     (function (row, index) {
       row.style.cursor = 'pointer';
-      row.addEventListener('click', function () { select(index + 1, true); });
+      row.addEventListener('click', function () { select(index + 1, true, true); });
     }(rows[r], r));
   }
 
@@ -633,12 +688,12 @@
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
     if (!selected && mode !== 'step') { return; }
-    if (e.key === 'ArrowRight') { e.preventDefault(); select(selected + 1, false); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); select(selected ? selected - 1 : 1, false); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); select(selected + 1, false, true); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); select(selected ? selected - 1 : 1, false, true); }
   });
 
-  if (stepPrev) { stepPrev.addEventListener('click', function () { select(selected - 1, false); }); }
-  if (stepNext) { stepNext.addEventListener('click', function () { select(selected + 1, false); }); }
+  if (stepPrev) { stepPrev.addEventListener('click', function () { select(selected - 1, false, true); }); }
+  if (stepNext) { stepNext.addEventListener('click', function () { select(selected + 1, false, true); }); }
 
   document.querySelectorAll('.mode-button').forEach(function (button) {
     button.addEventListener('click', function () { setMode(button.dataset.mode, true); });
