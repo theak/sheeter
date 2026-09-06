@@ -10,10 +10,17 @@ ADD requirements.txt /app/
 # --only-binary keeps that honest: if a musl wheel ever goes missing the build fails
 # here instead of quietly compiling, or quietly resolving back to an older release.
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+# A wheel that installs is not a wheel that loads.  The musl builds carry their own
+# libstdc++, libgcc, libgfortran and openblas, so the only thing they want from the base
+# image is libz, which alpine already has for apk.  Import the compiled modules here so
+# that if any of it stops being true the build fails rather than the first upload.
+RUN python -c "import numpy, scipy.ndimage, PIL.Image, pillow_heif, bottle, waitress"
 COPY sheeter/ /app/sheeter/
 COPY static/ /app/static/
 COPY templates/ /app/templates/
 ADD app.py /app/
+# And the app itself imports, which covers ssl for sheeter/claude.py.
+RUN python -c "import app"
 # Analyses live on a volume so a container restart keeps the user's history.
 ENV SHEETER_DATA_DIR=/data
 VOLUME /data

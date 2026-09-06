@@ -266,10 +266,20 @@ exposing `client.messages.create(...)` so the calling code reads the same either
 is given up is streaming and typed response models, neither of which this app used: the reply was
 walked as plain JSON before and still is.
 
+A wheel that installs is not a wheel that loads, and musl is where that bites: `libstdc++` is on the
+manylinux allowlist but not the musllinux one. Reading the `DT_NEEDED` entries of all 166 shared
+objects in the musl wheels says they are self-contained, because auditwheel bundled exactly the
+libraries that are not allowlisted: `libstdc++`, `libgcc_s`, `libgfortran`, `libquadmath` and
+openblas all ship inside the wheels. The only external name left is `libz.so.1`, which alpine has
+anyway since apk links it. The Dockerfile does not take that on faith: it imports the compiled
+modules in their own layer, so a base image that stops satisfying them fails the build rather than
+the first upload.
+
 ### Credits
 
 - [Pico CSS](https://picocss.com) for the stylesheet, vendored in `static/css/`.
-- [music21](https://www.music21.org) for chord naming and pitch spelling.
+- [music21](https://www.music21.org) for engraving the test corpus. It used to name the chords
+too; `sheeter/naming.py` does that now, so it is a dev dependency only.
 - [Verovio](https://www.verovio.org) for engraving the test fixtures.
 - The geometry and the split between the deterministic pass and the model pass follow a written
 plan rather than my own guessing, which is most of why it works at all.
