@@ -1,0 +1,6 @@
+numpy
+scipy
+pillow
+pillow-heif
+bottle
+waitress

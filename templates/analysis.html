@@ -1,0 +1,307 @@
+<%
+image = doc["image"]
+engine = doc["engine"]
+warnings = doc["warnings"] or []
+analysis_id = doc["id"]
+
+HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
+HAND_SHORT = {"right": "R", "left": "L"}
+MAJORS = {
+    -7: "C♭ major", -6: "G♭ major", -5: "D♭ major", -4: "A♭ major",
+    -3: "E♭ major", -2: "B♭ major", -1: "F major", 0: "C major",
+    1: "G major", 2: "D major", 3: "A major", 4: "E major", 5: "B major",
+    6: "F♯ major", 7: "C♯ major",
+}
+MINORS = {
+    -7: "A♭ minor", -6: "E♭ minor", -5: "B♭ minor", -4: "F minor",
+    -3: "C minor", -2: "G minor", -1: "D minor", 0: "A minor",
+    1: "E minor", 2: "B minor", 3: "F♯ minor", 4: "C♯ minor",
+    5: "G♯ minor", 6: "D♯ minor", 7: "A♯ minor",
+}
+
+staff_rows = []
+event_rows = []
+for system in doc["systems"]:
+    by_index = {}
+    for staff in system["staves"]:
+        by_index[staff["index"]] = staff
+        fifths = staff["key_fifths"]
+        accidentals = "no sharps or flats"
+        if fifths < 0:
+            accidentals = "%d flat%s" % (-fifths, "" if fifths == -1 else "s")
+        end
+        if fifths > 0:
+            accidentals = "%d sharp%s" % (fifths, "" if fifths == 1 else "s")
+        end
+        staff_rows.append({
+            "system": system["index"] + 1,
+            "hand": HAND_LABEL.get(staff["hand"]) or (staff["clef"].capitalize() + " staff"),
+            "clef": staff["clef"],
+            "key": "%s / %s" % (MAJORS.get(fifths, "?"), MINORS.get(fifths, "?")),
+            "accidentals": accidentals,
+            "cut_off": staff["cut_off"],
+        })
+    end
+    for event in system["events"]:
+        parts = []
+        for part in event["parts"]:
+            staff = by_index.get(part["staff"]) or {}
+            names = [note["pretty"] for note in part["notes"]]
+            names.reverse()
+            parts.append({
+                "hand": HAND_LABEL.get(part["hand"]) or (
+                    str(staff.get("clef", "")).capitalize() + " staff").strip(),
+                # No badge letter for a lone staff: the hand column already says
+                # "Treble staff", and "Treble Treble staff" reads badly.
+                "short": HAND_SHORT.get(part["hand"]) or "",
+                "tone": "l" if (part["hand"] == "left" or
+                                staff.get("clef") == "bass") else "r",
+                "names": ", ".join(names),
+                "chord": (part["chord"] or {}).get("symbol") or "",
+            })
+        end
+        combined = event["combined"] or {}
+        event_rows.append({
+            "system": system["index"],
+            "index": event["index"],
+            "step": len(event_rows) + 1,
+            "symbol": combined.get("symbol") or "",
+            "common_name": combined.get("common_name") or "",
+            "low_confidence": (event["confidence"] or 0) < 0.7,
+            "note": event["note"] or "",
+            "parts": parts,
+        })
+    end
+end
+
+# json.dumps leaves "<" alone, and doc["title"] is user supplied, so a title containing
+# "</script>" would end the script element early.  "<" never appears outside a JSON string,
+# so escaping every one of them keeps the document valid JSON and inert as HTML.
+safe_json = analysis_json.replace("<", "\\u003C")
+%>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>{{doc['title']}} - Sheeter</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/pico.min.css">
+<link rel="stylesheet" href="/static/css/sheeter.css">
+</head>
+<body class="analysis-page">
+<main class="container">
+
+  <nav class="crumbs">
+    <a href="/">&larr; All readings</a>
+  </nav>
+
+  <header class="masthead">
+    <h1 id="doc-title">{{doc['title']}}</h1>
+    <p class="muted">{{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
+    {{len(event_rows)}} step{{'' if len(event_rows) == 1 else 's'}},
+    read from a {{image['width']}}&times;{{image['height']}} image.</p>
+  </header>
+
+% if warnings:
+  <section class="notice notice-warn" role="alert">
+    <h2>Worth knowing before you trust this</h2>
+    <ul>
+%   for message in warnings:
+      <li>{{message}}</li>
+%   end
+    </ul>
+  </section>
+% end
+
+  <section class="provenance">
+% if engine['verified']:
+    <p><span class="badge badge-ok">Checked by Claude</span>
+    The geometry reading was reviewed against the photo by
+    <strong>{{engine['verifier'] or 'the vision model'}}</strong>, and its corrections applied.</p>
+% else:
+    <p><span class="badge">Geometry only</span>
+    These pitches come from measuring notehead positions against the staff lines. No model has
+    looked at the photo to check them.</p>
+%   if engine['verifier_error']:
+    <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
+%   end
+%   if verify_available:
+    <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form"
+          onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Asking Claude, this takes a few seconds';">
+      <button type="submit">Verify with Claude</button>
+    </form>
+%   end
+% end
+  </section>
+
+% if not doc['systems']:
+  <section class="notice notice-warn">
+    <h2>No staff lines were found</h2>
+    <p>Sheeter could not find a staff in this photo. Try again closer in, with the music filling
+    the frame, the page flat, and no shadow across it.</p>
+  </section>
+% end
+
+  <div class="stage-controls js-only" role="group" aria-label="Overlay controls">
+    <div class="control-group" role="group" aria-label="What to show">
+      <button type="button" class="view-button" data-view="notes">Notes</button>
+      <button type="button" class="view-button" data-view="chords">Chords</button>
+      <button type="button" class="view-button" data-view="both">Both</button>
+    </div>
+    <div class="control-group">
+      <label for="size-range">Label size</label>
+      <input type="range" id="size-range" min="7" max="26" step="1" value="12">
+    </div>
+    <div class="control-group">
+      <button type="button" id="zoom-out" aria-label="Zoom out">&minus;</button>
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom-fit">Fit</button>
+    </div>
+    <p class="legend">
+      <span class="key key-r">R</span> right hand
+      <span class="key key-l">L</span> left hand
+      <span class="key key-c">C</span> chord
+    </p>
+  </div>
+
+  <div id="viewport" class="viewport">
+    <div id="stage" class="stage">
+      <img id="sheet" src="/a/{{analysis_id}}/processed.png" alt="The photo, straightened"
+           width="{{image['width']}}" height="{{image['height']}}">
+      <!-- No role="group" here: Pico styles that as a button bar, which shrank this layer
+           short of the photo and collapsed the step markers' tap area. Every button inside
+           carries its own aria-label. -->
+      <div id="labels" class="labels show-both"></div>
+    </div>
+  </div>
+  <div id="step-bar" class="step-bar">
+    <div class="control-group" role="group" aria-label="How many labels to show">
+      <button type="button" class="mode-button" data-mode="step">One step</button>
+      <button type="button" class="mode-button" data-mode="all">All labels</button>
+    </div>
+    <div class="step-group">
+      <button type="button" id="step-prev" class="secondary outline">&larr; Prev</button>
+      <p id="step-status" class="step-status" role="status"></p>
+      <button type="button" id="step-next" class="secondary outline">Next &rarr;</button>
+    </div>
+  </div>
+
+  <p id="stage-empty" class="notice notice-warn" hidden></p>
+  <p class="muted stage-hint js-only">Tap a numbered dot to read that step, or use Prev and Next
+  and the arrow keys. Pinch or use + and &minus; to zoom; drag to move around; Fit puts it back.</p>
+
+  <section id="detail" class="detail" hidden></section>
+
+  <section class="reading">
+    <div class="reading-head">
+      <h2>The whole reading</h2>
+      <button type="button" id="copy-button" class="secondary outline js-only">Copy as text</button>
+    </div>
+% if event_rows:
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Step</th><th>Chord</th><th>Notes, high to low</th></tr>
+        </thead>
+        <tbody>
+%   for row in event_rows:
+          <tr id="row-{{row['system']}}-{{row['index']}}" class="{{'low' if row['low_confidence'] else ''}}">
+            <td>{{row['step']}}</td>
+            <td>
+              <strong>{{row['symbol'] or '-'}}</strong>
+%             if row['common_name']:
+              <br><small class="muted">{{row['common_name']}}</small>
+%             end
+%             if row['low_confidence']:
+              <br><small class="muted">unsure</small>
+%             end
+            </td>
+            <td>
+%             for part in row['parts']:
+              <span class="hand-line">
+%               if part['short']:
+              <span class="key key-{{part['tone']}}">{{part['short']}}</span>
+%               end
+              {{part['hand']}}: {{part['names']}}</span>
+%             end
+%             if row['note']:
+              <span class="hand-line muted">{{row['note']}}</span>
+%             end
+            </td>
+          </tr>
+%   end
+        </tbody>
+      </table>
+    </div>
+% else:
+    <p class="muted">No noteheads were found, so there is nothing to list.</p>
+% end
+  </section>
+
+% if staff_rows:
+  <section class="staves">
+    <h2>Staves</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>System</th><th>Hand</th><th>Clef</th><th>Key signature</th></tr>
+        </thead>
+        <tbody>
+%   for row in staff_rows:
+          <tr>
+            <td>{{row['system']}}</td>
+            <td>{{row['hand']}}{{' (cut off)' if row['cut_off'] else ''}}</td>
+            <td>{{row['clef']}}</td>
+            <td>{{row['key']}}<br><small class="muted">{{row['accidentals']}}</small></td>
+          </tr>
+%   end
+        </tbody>
+      </table>
+    </div>
+  </section>
+% end
+
+  <section class="manage">
+    <h2>This reading</h2>
+    <form action="/a/{{analysis_id}}/rename" method="post" class="rename-form">
+      <label for="title-input">Title</label>
+      <div class="rename-row">
+        <input type="text" id="title-input" name="title" value="{{doc['title']}}" maxlength="120">
+        <button type="submit">Rename</button>
+      </div>
+    </form>
+    <p class="file-links">
+      <a href="/a/{{analysis_id}}/original">Original photo</a>
+      <a href="/a/{{analysis_id}}/processed.png">Straightened image</a>
+      <a href="/a/{{analysis_id}}/analysis.json">Raw JSON</a>
+    </p>
+    <form action="/a/{{analysis_id}}/delete" method="post"
+          onsubmit="return confirm('Delete this reading for good?');">
+      <button type="submit" class="secondary outline danger">Delete this reading</button>
+    </form>
+  </section>
+
+% if items:
+  <section class="recent">
+    <h2>Recent</h2>
+    <ul class="strip">
+%   for item in items:
+      <li>
+        <a href="/a/{{item['id']}}" class="{{'current' if item['id'] == analysis_id else ''}}">
+          <img src="{{item['thumb_url']}}" alt="" loading="lazy" decoding="async">
+          <span>{{item['title']}}</span>
+        </a>
+      </li>
+%   end
+    </ul>
+  </section>
+% end
+
+</main>
+
+<script>window.SHEETER_DATA = {{!safe_json}};</script>
+<script src="/static/js/overlay.js"></script>
+</body>
+</html>

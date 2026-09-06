@@ -1,0 +1,1682 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "name": "treble_quarters",
+      "file": "treble_quarters.png",
+      "photo": "treble_quarters_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": null,
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "treble"
+            }
+          ],
+          "events": [
+            {
+              "treble": [
+                "E4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "A4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "C5"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "F5"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "single-staff",
+        "single-notes"
+      ]
+    },
+    {
+      "name": "bass_quarters",
+      "file": "bass_quarters.png",
+      "photo": "bass_quarters_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": null,
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "bass"
+            }
+          ],
+          "events": [
+            {
+              "bass": [
+                "G2"
+              ],
+              "durations": {
+                "bass": "quarter-or-shorter"
+              },
+              "dotted": {
+                "bass": false
+              }
+            },
+            {
+              "bass": [
+                "B2"
+              ],
+              "durations": {
+                "bass": "quarter-or-shorter"
+              },
+              "dotted": {
+                "bass": false
+              }
+            },
+            {
+              "bass": [
+                "D3"
+              ],
+              "durations": {
+                "bass": "quarter-or-shorter"
+              },
+              "dotted": {
+                "bass": false
+              }
+            },
+            {
+              "bass": [
+                "A3"
+              ],
+              "durations": {
+                "bass": "quarter-or-shorter"
+              },
+              "dotted": {
+                "bass": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "single-staff",
+        "single-notes"
+      ]
+    },
+    {
+      "name": "grand_2flats",
+      "file": "grand_2flats.png",
+      "photo": "grand_2flats_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": -2,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": -2,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "D5",
+                "F5",
+                "A5"
+              ],
+              "left": [
+                "Bb2",
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "Bb4",
+                "C5",
+                "Eb5",
+                "G5"
+              ],
+              "left": [
+                "Eb3",
+                "Bb3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5",
+                "Eb5",
+                "G5",
+                "Bb5"
+              ],
+              "left": [
+                "G2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "D5",
+                "F5",
+                "A5"
+              ],
+              "left": [
+                "F2",
+                "C3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "seconds",
+        "key-flats"
+      ]
+    },
+    {
+      "name": "grand_4sharps",
+      "file": "grand_4sharps.png",
+      "photo": "grand_4sharps_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 4,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 4,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "E4",
+                "G#4",
+                "B4"
+              ],
+              "left": [
+                "G#2",
+                "B2",
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F#4",
+                "A4",
+                "C#5"
+              ],
+              "left": [
+                "A2",
+                "C#3",
+                "F#3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F#4",
+                "B4",
+                "D#5"
+              ],
+              "left": [
+                "B2",
+                "D#3",
+                "F#3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E4",
+                "A4",
+                "C#5"
+              ],
+              "left": [
+                "A2",
+                "C#3",
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "triads",
+        "key-sharps"
+      ]
+    },
+    {
+      "name": "grand_3flats_stack",
+      "file": "grand_3flats_stack.png",
+      "photo": "grand_3flats_stack_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": -3,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": -3,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "Eb4",
+                "G4",
+                "Bb4",
+                "D5",
+                "F5"
+              ],
+              "left": [
+                "Eb2",
+                "Bb2"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F4",
+                "Ab4",
+                "C5",
+                "Eb5",
+                "G5"
+              ],
+              "left": [
+                "F2",
+                "C3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "G4",
+                "Bb4",
+                "D5",
+                "F5",
+                "Ab5"
+              ],
+              "left": [
+                "G2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "Ab4",
+                "C5",
+                "Eb5",
+                "G5",
+                "Bb5"
+              ],
+              "left": [
+                "Ab2",
+                "Eb3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "stacked-thirds",
+        "key-flats"
+      ]
+    },
+    {
+      "name": "ledger_lines",
+      "file": "ledger_lines.png",
+      "photo": "ledger_lines_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C4"
+              ],
+              "left": [
+                "C4"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "A3"
+              ],
+              "left": [
+                "E4"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "A5"
+              ],
+              "left": [
+                "E2"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C6"
+              ],
+              "left": [
+                "C2"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "ledger-lines",
+        "single-notes"
+      ]
+    },
+    {
+      "name": "accidentals_natural",
+      "file": "accidentals_natural.png",
+      "photo": "accidentals_natural_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": -2,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": -2,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "Bb4",
+                "D5"
+              ],
+              "left": [
+                "Bb2",
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "B4",
+                "D5"
+              ],
+              "left": [
+                "B2",
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F#5",
+                "A5"
+              ],
+              "left": [
+                "D3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "Eb5",
+                "G5"
+              ],
+              "left": [
+                "Eb3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "accidentals",
+        "key-flats"
+      ]
+    },
+    {
+      "name": "note_shapes",
+      "file": "note_shapes.png",
+      "photo": "note_shapes_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "E5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "half",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5",
+                "F5"
+              ],
+              "left": [
+                "D3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "E3",
+                "B3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "whole",
+                "left": "whole"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "hollow",
+        "filled"
+      ]
+    },
+    {
+      "name": "two_systems",
+      "file": "two_systems.png",
+      "photo": "two_systems_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 1,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 1,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "G4",
+                "B4",
+                "D5"
+              ],
+              "left": [
+                "G2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "A4",
+                "C5",
+                "E5"
+              ],
+              "left": [
+                "A2",
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "B4",
+                "D5",
+                "F#5"
+              ],
+              "left": [
+                "B2",
+                "F#3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        },
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 1,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 1,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "D5",
+                "F#5",
+                "A5"
+              ],
+              "left": [
+                "D3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "B4",
+                "D5",
+                "G5"
+              ],
+              "left": [
+                "B2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "G4",
+                "B4",
+                "D5"
+              ],
+              "left": [
+                "G2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "multi-system",
+        "key-sharps"
+      ]
+    },
+    {
+      "name": "lead_sheet",
+      "file": "lead_sheet.png",
+      "photo": "lead_sheet_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": null,
+              "clef": "treble",
+              "key_fifths": -1,
+              "label": "treble"
+            }
+          ],
+          "events": [
+            {
+              "treble": [
+                "F4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "G4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "A4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "Bb4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "C5"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "Bb4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "A4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            },
+            {
+              "treble": [
+                "F4"
+              ],
+              "durations": {
+                "treble": "quarter-or-shorter"
+              },
+              "dotted": {
+                "treble": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "single-staff",
+        "single-notes",
+        "key-flats"
+      ]
+    },
+    {
+      "name": "wide_range",
+      "file": "wide_range.png",
+      "photo": "wide_range_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "G5",
+                "C6"
+              ],
+              "left": [
+                "C2",
+                "G2",
+                "C3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "B4",
+                "F5",
+                "B5"
+              ],
+              "left": [
+                "D2",
+                "A2",
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "G5",
+                "C6"
+              ],
+              "left": [
+                "E2",
+                "B2",
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "G4",
+                "D5",
+                "G5"
+              ],
+              "left": [
+                "C2",
+                "G2",
+                "C3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "ledger-lines",
+        "wide-range"
+      ]
+    },
+    {
+      "name": "dotted_notes",
+      "file": "dotted_notes.png",
+      "photo": "dotted_notes_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "E5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "half",
+                "left": "half"
+              },
+              "dotted": {
+                "right": true,
+                "left": true
+              }
+            },
+            {
+              "right": [
+                "D5",
+                "F5"
+              ],
+              "left": [
+                "D3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "E3",
+                "B3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": true,
+                "left": true
+              }
+            },
+            {
+              "right": [
+                "F5",
+                "A5"
+              ],
+              "left": [
+                "F3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "G5",
+                "B5"
+              ],
+              "left": [
+                "G2",
+                "D3"
+              ],
+              "durations": {
+                "right": "half",
+                "left": "half"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "dotted",
+        "eighths"
+      ]
+    },
+    {
+      "name": "beamed_eighths",
+      "file": "beamed_eighths.png",
+      "photo": "beamed_eighths_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5"
+              ],
+              "left": [
+                "C3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5"
+              ],
+              "left": [
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E5"
+              ],
+              "left": [
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F5"
+              ],
+              "left": [
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "G5"
+              ],
+              "left": [
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F5"
+              ],
+              "left": [
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E5"
+              ],
+              "left": [
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5"
+              ],
+              "left": [
+                "D3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "eighths",
+        "beams",
+        "single-notes"
+      ]
+    },
+    {
+      "name": "cluster_seconds",
+      "file": "cluster_seconds.png",
+      "photo": "cluster_seconds_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "D5",
+                "E5"
+              ],
+              "left": [
+                "C3",
+                "D3",
+                "E3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5",
+                "E5",
+                "F5"
+              ],
+              "left": [
+                "D3",
+                "E3",
+                "F3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "E5",
+                "F5",
+                "G5"
+              ],
+              "left": [
+                "E3",
+                "F3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "F5",
+                "G5",
+                "A5"
+              ],
+              "left": [
+                "F3",
+                "G3",
+                "A3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "seconds",
+        "clusters"
+      ]
+    },
+    {
+      "name": "rest_left_hand",
+      "file": "rest_left_hand.png",
+      "photo": "rest_left_hand_photo.jpg",
+      "systems": [
+        {
+          "staves": [
+            {
+              "hand": "right",
+              "clef": "treble",
+              "key_fifths": 0,
+              "label": "right"
+            },
+            {
+              "hand": "left",
+              "clef": "bass",
+              "key_fifths": 0,
+              "label": "left"
+            }
+          ],
+          "events": [
+            {
+              "right": [
+                "C5",
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            },
+            {
+              "right": [
+                "D5",
+                "F5",
+                "A5"
+              ],
+              "left": null,
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": null
+              },
+              "dotted": {
+                "right": false,
+                "left": null
+              }
+            },
+            {
+              "right": [
+                "B4",
+                "E5",
+                "G5"
+              ],
+              "left": null,
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": null
+              },
+              "dotted": {
+                "right": false,
+                "left": null
+              }
+            },
+            {
+              "right": [
+                "C5",
+                "E5",
+                "G5"
+              ],
+              "left": [
+                "C3",
+                "G3"
+              ],
+              "durations": {
+                "right": "quarter-or-shorter",
+                "left": "quarter-or-shorter"
+              },
+              "dotted": {
+                "right": false,
+                "left": false
+              }
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "grand-staff",
+        "rests"
+      ]
+    }
+  ]
+}
