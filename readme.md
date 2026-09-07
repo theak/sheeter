@@ -21,7 +21,11 @@ reading does not care what resolution the photo is.
 sweep the line spacing, predict the other four lines and keep the guess only if all five
 predicted rows are inked across the same span. A photo
 has page margins, so a staff almost never spans the frame and asking which rows are dark all the
-way across does not work.
+way across does not work. That span is measured across a line's rows, one either side, and not
+off a single row of pixels: deskew leaves a fraction of a degree behind, so a line drifts a
+pixel or two end to end and no one row is all of it. Measured off one row, a staff came out
+232 pixels short at the left, which hid its clef, its key signature and the left hand of its
+first chord, all without anything about the reading looking wrong.
 4. **Noteheads.** Correlate a notehead-shaped outline against the image with the staff lines
 erased, and keep the peaks. It is a small bank of outlines rather than one, because a whole note
 is a different shape: wider, rounder and upright instead of leaning. Matching an outline rather

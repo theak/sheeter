@@ -27,7 +27,7 @@ from .preprocess import estimate_scale, run_lengths
 #: and on re-upload, when its version is not this one.  Without that, an image analysed
 #: before a fix keeps showing the reading from before the fix, forever, because uploads
 #: are content addressed and the old reading is what the address points at.
-GEOMETRY_VERSION = "2"
+GEOMETRY_VERSION = "3"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
@@ -63,10 +63,22 @@ def staff_line_mask(mask, thickness, unit, reach=2.0):
     return opened & thin
 
 
-def _row_support(lines_mask, y, x0, x1):
-    """Fraction of the given x span that is inked on row *y* (or either neighbour)."""
+def _line_rows(lines_mask, y):
+    """The rows that count as the staff line at *y*: one either side of it.
+
+    A printed staff line is not one row of pixels across a whole page.  Deskew leaves
+    a fraction of a degree behind, so a line drifts a pixel or two from one end to the
+    other and no single row is all of it.  One row either side is as much of that as
+    anything here tolerates, and every measurement of a line has to agree on which
+    rows it is, or they disagree about where the line stops.
+    """
     y = int(round(y))
-    lo, hi = max(0, y - 1), min(lines_mask.shape[0], y + 2)
+    return max(0, y - 1), min(lines_mask.shape[0], y + 2)
+
+
+def _row_support(lines_mask, y, x0, x1):
+    """Fraction of the given x span that is inked on the line at row *y*."""
+    lo, hi = _line_rows(lines_mask, y)
     if lo >= hi or x1 <= x0:
         return 0.0
     band = lines_mask[lo:hi, x0:x1]
@@ -102,7 +114,14 @@ def find_staves(mask, thickness, unit):
             ys = [top + i * spacing for i in range(5)]
             if ys[-1] >= height:
                 continue
-            columns = np.flatnonzero(lines_mask[int(round(ys[0]))])
+            # Across the line's rows, not one of them.  Read off a single row, the span
+            # is only as long as the stretch of the line that happens to sit on that
+            # row, and on a page with any drift left in it that is a fraction of the
+            # staff.  A bass staff came out 232px short at the left, which put its clef
+            # outside detect_clef's search, and clef_end then starts the notehead search
+            # after the first chord: the whole left hand of it was never looked for.
+            lo, hi = _line_rows(lines_mask, ys[0])
+            columns = np.flatnonzero(lines_mask[lo:hi].any(axis=0))
             if columns.size == 0:
                 continue
             x0, x1 = int(columns[0]), int(columns[-1]) + 1
