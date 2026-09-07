@@ -27,7 +27,7 @@ from .preprocess import estimate_scale, run_lengths
 #: and on re-upload, when its version is not this one.  Without that, an image analysed
 #: before a fix keeps showing the reading from before the fix, forever, because uploads
 #: are content addressed and the old reading is what the address points at.
-GEOMETRY_VERSION = "3"
+GEOMETRY_VERSION = "4"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
