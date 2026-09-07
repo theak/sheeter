@@ -11,7 +11,7 @@ import json
 import pytest
 from PIL import Image
 
-from sheeter import naming, pitches, schema, verify
+from sheeter import naming, pipeline, pitches, schema, verify
 
 
 # --------------------------------------------------------------------------
@@ -339,6 +339,25 @@ def test_new_key_signature_alters_untouched_notes(doc):
     note = out["systems"][0]["events"][1]["parts"][0]["notes"][1]
     assert note["from_key"] is True
     assert note["changed"] is True
+
+
+def test_a_key_the_reader_picked_outranks_the_model(doc):
+    """Somebody with the page in front of them beats the model on what the key is.
+
+    pipeline.set_key puts the confidence at 1.0, which is what geometry_is_sure reads,
+    so the merge restores the picked key rather than taking the model's word for it.
+    """
+    # What the route stores: the choice on the document, and the reading respelled.
+    doc["key_override"] = -2
+    pipeline.set_key(doc, -2)
+    out = verify.apply_correction(doc, correction([
+        {"index": 0, "staves": [
+            {"index": 0, "clef": "treble", "key_fifths": 4, "cut_off": False}],
+         "events": []},
+    ]))
+    assert out["systems"][0]["staves"][0]["key_fifths"] == -2
+    assert pitch_names(out) == ["Eb4", "G4", "C5"], "and nothing was respelled"
+    schema.validate_analysis(out)
 
 
 def test_note_count_change_reanchors_the_overlay(doc):

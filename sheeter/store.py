@@ -176,7 +176,9 @@ def _read_doc(directory):
         raise schema.SchemaError(
             "analysis: schema_version %r, this build understands %r"
             % (doc.get("schema_version"), schema.SCHEMA_VERSION))
-    return doc
+    # A file written before a field was added is still this version, so fill the
+    # field in here rather than making every reader of a document check for it.
+    return schema.normalize(doc)
 
 
 def load(analysis_id):

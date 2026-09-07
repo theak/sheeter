@@ -7,19 +7,6 @@ analysis_id = doc["id"]
 
 HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
 HAND_SHORT = {"right": "R", "left": "L"}
-MAJORS = {
-    -7: "C♭ major", -6: "G♭ major", -5: "D♭ major", -4: "A♭ major",
-    -3: "E♭ major", -2: "B♭ major", -1: "F major", 0: "C major",
-    1: "G major", 2: "D major", 3: "A major", 4: "E major", 5: "B major",
-    6: "F♯ major", 7: "C♯ major",
-}
-MINORS = {
-    -7: "A♭ minor", -6: "E♭ minor", -5: "B♭ minor", -4: "F minor",
-    -3: "C minor", -2: "G minor", -1: "D minor", 0: "A minor",
-    1: "E minor", 2: "B minor", 3: "F♯ minor", 4: "C♯ minor",
-    5: "G♯ minor", 6: "D♯ minor", 7: "A♯ minor",
-}
-
 staff_rows = []
 event_rows = []
 for system in doc["systems"]:
@@ -27,19 +14,12 @@ for system in doc["systems"]:
     for staff in system["staves"]:
         by_index[staff["index"]] = staff
         fifths = staff["key_fifths"]
-        accidentals = "no sharps or flats"
-        if fifths < 0:
-            accidentals = "%d flat%s" % (-fifths, "" if fifths == -1 else "s")
-        end
-        if fifths > 0:
-            accidentals = "%d sharp%s" % (fifths, "" if fifths == 1 else "s")
-        end
         staff_rows.append({
             "system": system["index"] + 1,
             "hand": HAND_LABEL.get(staff["hand"]) or (staff["clef"].capitalize() + " staff"),
             "clef": staff["clef"],
-            "key": "%s / %s" % (MAJORS.get(fifths, "?"), MINORS.get(fifths, "?")),
-            "accidentals": accidentals,
+            "key": keysig.label(fifths),
+            "accidentals": keysig.count(fifths),
             "cut_off": staff["cut_off"],
         })
     end
@@ -151,6 +131,39 @@ safe_json = analysis_json.replace("<", "\\u003C")
       </form>
     </div>
   </section>
+
+% if doc['systems']:
+  <!-- Every choice is its own submit button, so the whole picker is plain HTML and
+       works with scripting off.  <details> gives the open and close for nothing. -->
+  <form action="/a/{{analysis_id}}/key" method="post" class="key-picker">
+    <details>
+      <summary>
+        <span class="key-current">{{!keysig.svg(key_fifths, False)}}
+        <span>{{keysig.label(key_fifths)}}</span></span>
+% if key_picked:
+        <span class="badge">You picked this</span>
+% else:
+        <span class="badge">Read from the photo</span>
+% end
+      </summary>
+      <p class="muted">Match the sharps or flats printed after the clef on your photo.
+      Every note without an accidental of its own is spelled from this.</p>
+      <div class="key-grid">
+% for row in keysig.choices():
+        <button type="submit" name="fifths" value="{{row['fifths']}}"
+                {{!'aria-current="true"' if row['fifths'] == key_fifths else ''}}>
+          {{!row['svg']}}
+          <span class="key-name">{{row['label']}}<small>{{row['count']}}</small></span>
+        </button>
+% end
+      </div>
+% if key_picked:
+      <button type="submit" name="fifths" value="auto" class="secondary outline">
+        Use the key read from the photo</button>
+% end
+    </details>
+  </form>
+% end
 
 % if not doc['systems']:
   <section class="notice notice-warn">

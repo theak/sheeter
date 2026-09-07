@@ -21,7 +21,11 @@ reading does not care what resolution the photo is.
 sweep the line spacing, predict the other four lines and keep the guess only if all five
 predicted rows are inked across the same span. A photo
 has page margins, so a staff almost never spans the frame and asking which rows are dark all the
-way across does not work.
+way across does not work. That span is measured across a line's rows, one either side, and not
+off a single row of pixels: deskew leaves a fraction of a degree behind, so a line drifts a
+pixel or two end to end and no one row is all of it. Measured off one row, a staff came out
+232 pixels short at the left, which hid its clef, its key signature and the left hand of its
+first chord, all without anything about the reading looking wrong.
 4. **Noteheads.** Correlate a notehead-shaped outline against the image with the staff lines
 erased, and keep the peaks. It is a small bank of outlines rather than one, because a whole note
 is a different shape: wider, rounder and upright instead of leaning. Matching an outline rather
@@ -207,6 +211,31 @@ button beside "Verify with Claude" that runs the current reader over the stored 
 reading made by an older engine says so at the top of its page, so what is already in the gallery
 can be brought up to date without finding the file. Otherwise a page analysed before a fix would
 show the reading from before the fix for as long as it stayed in the store.
+
+### Saying what the key is
+
+The key signature decides the alteration of every notehead that has no accidental of its own, so
+one misread glyph after the clef respells a whole page. It is the reader's worst single failure and
+the one a person can see the answer to in a second, so every reading has a key signature picker: a
+button showing the key it is in, which opens all fifteen drawn as little staves. Match what is
+printed on your photo, tap it, and every note is spelled again and every chord named again. It is
+arithmetic on the reading already stored, not a second look at the photo, so it returns at once.
+
+The choice is remembered on the reading and outlives it. Re-analyze keeps it, since a better
+reading of the page does not make the key a different key, and the Claude pass will not overrule it,
+since somebody holding the page beats a model on what the signature is. "Use the key read from the
+photo" is the way back, and that one does read the photo again, because the detected key is not kept
+once a choice has replaced it.
+
+The pictures have no clef in them. A treble clef is either a large hand-drawn path or a font glyph,
+and U+1D11E renders as a missing-glyph box on plenty of systems, which is worse than nothing. The
+accidentals are drawn where they are printed, which is what the eye matches on.
+
+One limit worth knowing: re-spelling works from each notehead's stored position and its own written
+accidental, and barlines are not stored, so an accidental that carried across the rest of its bar
+is not carried again. A note that inherited a flat that way is spelled from the key instead. The
+Claude pass has always had the same gap. It bites only where a bar has one accidental and a later
+note on the same line leans on it, which is uncommon in the close voicings this is pointed at.
 
 ### Hearing the chords
 

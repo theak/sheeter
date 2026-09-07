@@ -21,6 +21,24 @@ def staff_image(unit=20, thickness=2, width=600, height=240, top=60, margin=40):
     return mask, [float(top + i * unit + (thickness - 1) / 2.0) for i in range(5)]
 
 
+def drifting_staff_image(unit=20, thickness=2, width=900, height=240, top=60,
+                         margin=40, shift=2):
+    """A staff whose lines slope down *shift* pixels from one end to the other.
+
+    What a real page looks like when deskew leaves a fraction of a degree behind.  The
+    lines are not level, so no single row of pixels is the whole of any of them: the
+    left end of a line and its right end are on different rows.
+    """
+    mask = np.zeros((height, width), dtype=bool)
+    span = width - 2 * margin
+    for index in range(5):
+        base = top + index * unit
+        for x in range(margin, width - margin):
+            y = int(round(base + shift * (x - margin) / float(span - 1)))
+            mask[y:y + thickness, x] = True
+    return mask
+
+
 def draw_notehead(mask, x, y, unit, filled=True):
     """A notehead-sized blob, good enough for the correlator to find.
 
@@ -73,6 +91,35 @@ class TestStaffFinding:
         staves = geometry.find_staves(mask, thickness, unit)
         assert len(staves) == 2
         assert geometry.group_systems(staves, mask, unit) == [[0, 1]]
+
+    def test_a_staff_whose_lines_drift_spans_its_whole_width(self):
+        """The span has to be measured across the line's rows, not one of them.
+
+        Read off one row it is only as long as the stretch of line that happens to sit
+        on that row.  On a real page that cost a bass staff 232px at the left: its clef
+        was then outside detect_clef's search window, and clef_end starts the notehead
+        search, so the left hand of the first chord was never looked for at all.
+        """
+        mask = drifting_staff_image()
+        thickness, unit = geometry.estimate_scale(mask)
+        staves = geometry.find_staves(mask, thickness, unit)
+        assert len(staves) == 1
+        x0, x1 = staves[0]["x_range"]
+        assert x0 <= 41, "the staff is drawn from x=40"
+        assert x1 >= 859, "and runs to x=860"
+
+    def test_a_drifting_staff_is_found_at_all(self):
+        """Widening the span must not cost the candidate its support score.
+
+        The score is what decides a staff is a staff, and it is measured over the span.
+        A wider span scored the same way could drop below the threshold and lose the
+        staff altogether, which is worse than the truncation being fixed here.
+        """
+        mask = drifting_staff_image(shift=2)
+        thickness, unit = geometry.estimate_scale(mask)
+        staves = geometry.find_staves(mask, thickness, unit)
+        assert len(staves) == 1
+        assert staves[0]["support"] > 0.9, "every line is inked across the whole span"
 
     def test_separates_two_systems_by_the_gap(self):
         mask, _ = staff_image(height=700)
@@ -251,6 +298,29 @@ class TestClef:
         blotted = page.copy()
         blotted[box] = ndimage.binary_dilation(blotted[box], structure=np.ones((5, 5)))
         assert self._read(blotted) == ["treble", "bass"]
+
+    def test_a_page_whose_lines_drift_keeps_both_clefs_in_view(self, page):
+        """The consequence of a short staff span, on a real page.
+
+        detect_clef only looks in the first seven staff spaces after the staff's own
+        left edge.  Measure that edge from one pixel row of a line that is not level
+        and it lands out among the notes, the clef is not in the window, and the staff
+        falls back to whatever its position implies.  Confidence 0.0 is the only trace,
+        and no pitch on the page looks wrong.
+        """
+        drifted = page.copy()
+        cut = drifted.shape[1] // 3
+        # Everything right of a third of the way across drops two pixels, which is what
+        # a fraction of a degree of skew does over a page this wide.
+        drifted[:, cut:] = np.roll(drifted[:, cut:], 2, axis=0)
+        assert self._read(drifted) == ["treble", "bass"]
+
+        staves, cleaned, unit, height = self._staves(drifted)
+        for index in range(2):
+            band = geometry.staff_band(staves, index, unit, height)
+            _clef, confidence, _end = geometry.detect_clef(cleaned, staves[index],
+                                                           band, unit)
+            assert confidence > 0.5, "staff %d found no glyph to measure" % index
 
     def test_a_barline_welded_to_the_clef_does_not_change_it(self, page):
         """Braces, opening barlines and stems are stripped before the glyph is measured.

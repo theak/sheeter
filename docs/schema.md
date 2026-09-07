@@ -15,6 +15,7 @@ arbitrary mobile scaling.
   "id": "8f3a1c2d9b4e",              // 12 hex chars, sha256 of the original bytes
   "created_at": "2026-09-05T20:31:00Z",
   "title": "IMG_4021.jpg",           // user-editable label, defaults to filename
+  "key_override": null,              // null, or the -7..7 the reader picked by hand
 
   "source": {
     "filename": "IMG_4021.jpg",
@@ -143,9 +144,20 @@ arbitrary mobile scaling.
    A lone staff gets `hand: null` and the UI falls back to the clef name.
 4. Every field above is always present. Unknown values are `null`, never missing keys.
    `sheeter.schema.validate_analysis()` enforces this and is run on every write.
+   A field added after a version shipped is filled in as a document comes off disk, by
+   `schema.normalize()` in `store._read_doc`, so the rule holds in memory even where the
+   file predates the field. `key_override` is the one that arrived this way. That beats
+   bumping the version for an added field: `store.load()` refuses a version it does not
+   know and `store.listing()` swallows the error, so a bump makes every reading this build
+   saves vanish without a word from any build that came before it.
 5. Bumping `schema_version` means stored analyses are re-rendered from whatever they have;
    `store.load()` refuses to serve an analysis whose version it does not understand.
-6. The vision pass only overrules a system the geometry was unsure of.
+6. `key_override` outranks everything. `pipeline.set_key()` writes the picked key to every
+   staff of every system at `key_confidence` 1.0 and re-spells every note from its own `y`;
+   `verify.apply_correction()` puts it back after a merge, and a re-analysis carries it onto
+   the new reading. Only the reader clearing it returns the page to what the photo says, and
+   that needs a re-analysis, since the detected key is not kept once a choice replaces it.
+7. The vision pass only overrules a system the geometry was unsure of.
    `verify.geometry_is_sure()` is false when the system is `cut_off`, when a staff has
    `clef_confidence` or `key_confidence` under 0.9, or when any note has `confidence`
    under 0.88. On a sure system the clef, `key_fifths`, `parts` and `combined` are

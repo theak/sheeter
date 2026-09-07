@@ -467,3 +467,55 @@ tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
 @media (min-width: 700px) {
   .gallery { grid-template-columns: 1fr 1fr; }
 }
+
+/* The key signature picker.  Every choice is a submit button, so this is styling a
+   form, not a widget: no script is involved in opening it or in choosing. */
+.key-picker { margin: 0 0 1rem; }
+.key-picker details {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--pico-card-border-color);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
+}
+.key-picker summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.key-current { display: inline-flex; align-items: center; gap: 0.5rem; }
+.key-picker p { margin: 0.6rem 0; font-size: 0.85rem; }
+.key-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+/* Pico gives a button the full width of its container and a heavy vertical rhythm;
+   the same reset the other control groups use. */
+.key-grid button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: auto;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  text-align: left;
+  background: transparent;
+  border-color: var(--pico-muted-border-color);
+  color: var(--pico-primary);
+}
+/* aria-current, not aria-pressed: these submit a choice, they are not toggles, and
+   the overlay already means "this is the one" by aria-current. */
+.key-grid button[aria-current] {
+  background: var(--pico-primary);
+  border-color: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+.key-name { display: flex; flex-direction: column; line-height: 1.25; }
+.key-name small { font-size: 0.72rem; opacity: 0.75; }
+.key-picker .keysig { flex: none; }
+.key-picker > details > button { width: auto; margin: 0; padding: 0.3rem 0.7rem;
+  font-size: 0.85rem; }

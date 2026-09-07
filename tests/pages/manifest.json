@@ -72,6 +72,19 @@
         {"right": ["G3", "C4", "F4"],  "left": ["Bb2", "Db3"]}
       ],
       "known_wrong": []
+    },
+    {
+      "file": "jamesmay.png",
+      "source": "https://storage.googleapis.com/aks_public/jamesmay.png",
+      "note": "A short grand staff in B flat whose staff lines slope about two pixels across the page.  The bass staff's span was measured from one pixel row of its top line and came out 232px short, which put its clef outside detect_clef's window and started the notehead search after the first chord: the whole left hand of it went missing, and the staff's own key signature with it.  Steps 2 and 3 are the two ends of a tie and carry the same pitches.  Read off the image rather than supplied by the owner, and checked against the ledger lines and the augmentation dots, which sit at their own notehead's height.",
+      "key": -2,
+      "events": 3,
+      "steps": [
+        {"right": ["C5", "D5", "F5", "A5"], "left": ["Bb3", "F4"]},
+        {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]},
+        {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]}
+      ],
+      "known_wrong": []
     }
   ]
 }

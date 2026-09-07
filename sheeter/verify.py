@@ -31,7 +31,7 @@ import sys
 
 from PIL import Image
 
-from . import naming, pitches, schema
+from . import naming, pipeline, pitches, schema
 
 DEFAULT_VERIFY_MODEL = "claude-sonnet-5"
 
@@ -52,10 +52,6 @@ WIDE_IMAGE_PX = 1600
 MAX_IMAGE_BLOCKS = 8
 
 VERIFY_MAX_TOKENS = 8000
-
-_ACCIDENTAL_ALTER = {
-    "flat": -1, "sharp": 1, "natural": 0, "double-flat": -2, "double-sharp": 2,
-}
 
 SYSTEM_PROMPT = """\
 You are an expert music engraver and jazz pianist verifying an automated optical
@@ -416,52 +412,6 @@ def _parse_pitch(name):
     return step, alter
 
 
-def _rebuild(note, step, alter, staff, from_key):
-    """A note at *step*/*alter* that keeps the geometry we already measured."""
-    y = note["y"]
-    new = pitches.make_note(
-        step, alter, note["x"], y,
-        w=note["w"], h=note["h"], hollow=note["hollow"],
-        accidental=note["accidental"], from_key=from_key,
-        ledger=pitches.ledger_count(step, staff["clef"]),
-        step_err_px=abs(y - pitches.step_to_y(step, staff["lines"], staff["clef"])),
-        confidence=note["confidence"], changed=note["changed"],
-    )
-    if new["name"] != note["name"]:
-        new["changed"] = True
-    return new
-
-
-def _staff_notes(system, staff_index):
-    for event in system["events"]:
-        for part in event["parts"]:
-            if part["staff"] == staff_index:
-                yield event, part
-
-
-def _reread(system, staff):
-    """Re-derive every pitch on *staff* from its y, under the current clef and key.
-
-    A corrected clef or key signature invalidates the reading of every notehead
-    on the staff, not only the ones the model bothered to mention.  Notes whose
-    name moves are marked changed: the verifier did change them, by way of the
-    clef, and the overlay should say so.
-    """
-    alterations = pitches.key_alterations(staff["key_fifths"])
-    for _event, part in _staff_notes(system, staff["index"]):
-        notes = []
-        for note in part["notes"]:
-            step, _err = pitches.y_to_step(note["y"], staff["lines"], staff["clef"])
-            if note["accidental"] in _ACCIDENTAL_ALTER:
-                alter = _ACCIDENTAL_ALTER[note["accidental"]]
-                from_key = False
-            else:
-                alter = alterations.get(pitches.step_letter(step), 0)
-                from_key = alter != 0
-            notes.append(_rebuild(note, step, alter, staff, from_key))
-        part["notes"] = notes
-
-
 def _apply_staves(system, payload_staves):
     """Apply clef, key and cut_off; returns the staves that actually changed."""
     changed = []
@@ -520,7 +470,7 @@ def _apply_names(part, names, staff, event):
             step, alter = pitch
             from_key = (note["accidental"] is None and alter != 0
                         and alterations.get(pitches.step_letter(step)) == alter)
-            notes.append(_rebuild(note, step, alter, staff, from_key))
+            notes.append(pipeline.restate_note(note, step, alter, staff, from_key))
         part["notes"] = notes
         return
 
@@ -624,7 +574,7 @@ def _merge(doc, payload):
             continue
         resolved += 1
         for staff in _apply_staves(system, entry.get("staves")):
-            _reread(system, staff)
+            pipeline.restate_staff(system, staff)
         _apply_events(system, entry.get("events"),
                       dict((s["index"], s) for s in system["staves"]))
         _rename_chords(system, before[system["index"]])
@@ -682,6 +632,20 @@ def _enforce_trust(before, after):
     return after
 
 
+def _enforce_picked_key(doc):
+    """Put back a key signature the reader chose, whatever the model saw.
+
+    A picked key is stored at confidence 1.0, which is enough for _enforce_trust to
+    restore it on any system the pass had no other reason to doubt.  This is for the
+    systems it did doubt: an unsure clef or one faint notehead is not a reason to
+    overrule somebody who has the page in front of them on what the signature is, and
+    a key the model moved would respell every note under it.
+    """
+    if doc["key_override"] is not None:
+        pipeline.set_key(doc, doc["key_override"])
+    return doc
+
+
 def apply_correction(doc, payload):
     """Merge a ``corrected_reading`` payload into *doc*.
 
@@ -700,6 +664,7 @@ def _correct(doc, payload):
     try:
         merged, resolved = _merge(doc, payload)
         out = _enforce_trust(doc, merged)
+        _enforce_picked_key(out)
         schema.validate_analysis(out)
     except Exception:
         return doc, 0
