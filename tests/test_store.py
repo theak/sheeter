@@ -255,6 +255,32 @@ def test_load_refuses_another_schema_version(data_root):
         store.load(ident)
 
 
+def test_load_fills_in_a_field_a_stored_reading_predates(data_root):
+    """The picker's key_override was added later, so files on disk do not have it.
+
+    This is the case that would have gone wrong quietly: a document that loads but is
+    then missing a key the strict validator requires, so the next rename or verify
+    fails on a reading that opened perfectly well.
+    """
+    ident, doc = save_one()
+    del doc["key_override"]
+    (data_root / ident / "analysis.json").write_text(json.dumps(doc))
+
+    loaded = store.load(ident)
+    assert loaded["key_override"] is None
+    store.save_doc(loaded)      # the validator would refuse it if the field were gone
+    assert "key_override" in json.loads(
+        (data_root / ident / "analysis.json").read_text())
+
+
+def test_a_picked_key_survives_a_round_trip(data_root):
+    ident, _doc = save_one()
+    doc = store.load(ident)
+    doc["key_override"] = -2
+    store.save_doc(doc)
+    assert store.load(ident)["key_override"] == -2
+
+
 def test_load_of_broken_json_raises_schemaerror(data_root):
     ident, _ = save_one()
     (data_root / ident / "analysis.json").write_text("{not json")

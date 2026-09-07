@@ -145,3 +145,24 @@ class TestSetKey:
     def test_an_impossible_key_is_refused(self, doc, fifths):
         with pytest.raises(ValueError):
             pipeline.set_key(doc, fifths)
+
+
+class TestTheStoredChoice:
+    """The pick itself is one field on the document; set_key does not write it."""
+
+    def test_a_new_document_has_nobody_s_choice_on_it(self, doc):
+        assert doc["key_override"] is None
+
+    @pytest.mark.parametrize("bad", [-8, 8, "two flats", True, 1.5])
+    def test_the_validator_refuses_an_impossible_choice(self, doc, bad):
+        doc["key_override"] = bad
+        with pytest.raises(schema.SchemaError):
+            schema.validate_analysis(doc)
+
+    def test_the_validator_takes_a_real_one(self, doc):
+        doc["key_override"] = -2
+        assert schema.validate_analysis(doc) is doc
+
+    def test_normalize_leaves_a_choice_that_is_already_there_alone(self):
+        assert schema.normalize({"key_override": 3})["key_override"] == 3
+        assert schema.normalize({})["key_override"] is None

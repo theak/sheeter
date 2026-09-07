@@ -36,7 +36,7 @@ STAFF_KEYS = (
 SYSTEM_KEYS = ("index", "y_range", "x_range", "grand", "cut_off", "staves", "events")
 TOP_KEYS = (
     "schema_version", "id", "created_at", "title", "source", "image", "engine",
-    "warnings", "systems",
+    "warnings", "systems", "key_override",
 )
 
 
@@ -61,7 +61,24 @@ def new_analysis(analysis_id, created_at, title, source, image):
         },
         "warnings": [],
         "systems": [],
+        "key_override": None,
     }
+
+
+def normalize(doc):
+    """Fill in fields added after this schema version was first written.
+
+    ``key_override`` arrived with the key signature picker, so every analysis stored
+    before it lacks the field.  Bumping SCHEMA_VERSION for that would have been worse
+    than useless: store.load refuses a version it does not know, and store.listing
+    swallows the error to keep one bad reading from emptying the gallery, so every
+    older build would have silently lost every reading this one saved.  Filling the
+    field in on the way through costs nothing and keeps rule 4 true, that a document
+    in memory always has every field.
+    """
+    if isinstance(doc, dict):
+        doc.setdefault("key_override", None)
+    return doc
 
 
 def _require(obj, keys, where):
@@ -90,6 +107,11 @@ def validate_analysis(doc):
              "engine")
     if not isinstance(doc["warnings"], list):
         raise SchemaError("warnings: expected a list")
+    override = doc["key_override"]
+    if override is not None and not (isinstance(override, int)
+                                     and not isinstance(override, bool)
+                                     and -7 <= override <= 7):
+        raise SchemaError("key_override: expected null or -7..7, got %r" % (override,))
 
     for si, system in enumerate(doc["systems"]):
         where = "system[%d]" % si
