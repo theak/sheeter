@@ -85,6 +85,19 @@
         {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]}
       ],
       "known_wrong": []
+    },
+    {
+      "file": "first_chord_missed.png",
+      "source": "https://storage.googleapis.com/aks_public/firstchordmissed.png",
+      "note": "The same opening as jamesmay.png and more of the piece.  Here the coarse skew estimate, made on a 900px wide copy where a fifth of a degree hardly moves the score, picked the wrong side of a flat maximum and rotated a level page to 0.2 degrees off: nine pixels of drift end to end, both staves measuring short, neither clef read, no key signature found on either, and the first chord never looked for.  Only steps 1 to 3 are annotated, being the same music as jamesmay.png; the triplets and the five-note chord later on have not been checked by anyone.",
+      "key": -2,
+      "events": null,
+      "steps": [
+        {"right": ["C5", "D5", "F5", "A5"], "left": ["Bb3", "F4"]},
+        {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]},
+        {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]}
+      ],
+      "known_wrong": []
     }
   ]
 }

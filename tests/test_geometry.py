@@ -243,6 +243,40 @@ class TestPreprocess:
         tilted = ndimage.rotate(gray, -2.5, reshape=False, order=1, cval=255)
         assert preprocess.estimate_skew(tilted) == pytest.approx(2.5, abs=0.6)
 
+    def test_the_second_look_finds_a_fifth_of_a_degree(self):
+        """What the coarse pass cannot see.
+
+        It measures the angle on a 900px wide copy, where a whole page of music is a
+        couple of hundred rows tall and a fifth of a degree hardly smears the row
+        profile.  On one real page its score curve was flat to within a few percent
+        across half a degree and it picked the wrong side, rotating a level page to
+        0.2 degrees off.  Nine pixels of drift end to end followed, and with it two
+        short staves, two unread clefs, and a first chord nobody looked for.
+        """
+        # Sloping down to the right by 7px over 1920 is atan(7/1920), a fifth of a
+        # degree, and levelling it is a rotation the same way as estimate_skew's.
+        mask = drifting_staff_image(unit=30, width=2000, height=400, top=140, shift=7)
+        assert preprocess.refine_skew(mask) == pytest.approx(0.21, abs=0.06)
+
+    def test_the_second_look_leaves_a_level_page_alone(self):
+        mask, _lines = staff_image(unit=30, width=2000, height=400, top=140)
+        assert preprocess.refine_skew(mask) == 0.0
+
+    def test_it_only_acts_on_a_clear_win(self):
+        """The gate is the whole safety of this.
+
+        Asked to revise the angle whenever anything scores higher at all, it moved four
+        real pages that were reading correctly, and on one of them turned a treble clef
+        into a bass clef, which takes every pitch on the staff a twelfth out of place
+        while leaving nothing about the reading looking wrong.
+        """
+        mask = drifting_staff_image(unit=30, width=2000, height=400, top=140, shift=7)
+        assert preprocess.refine_skew(mask, gain=1000.0) == 0.0, "no win is enough"
+        assert preprocess.refine_skew(mask, gain=1.0) != 0.0, "any win will do"
+
+    def test_a_blank_page_has_no_skew_to_revise(self):
+        assert preprocess.refine_skew(np.zeros((200, 400), dtype=bool)) == 0.0
+
 
 class TestClef:
     """A misread clef is the worst failure this reader has.

@@ -110,6 +110,53 @@ def estimate_skew(gray, max_deg=MAX_SKEW_DEG):
     return float(round(best, 2))
 
 
+#: How much sharper the row profile has to get before the skew estimate is revised.
+#:
+#: The coarse estimate is made on a 900px wide copy, where a whole page of music is a
+#: couple of hundred rows tall and a fifth of a degree barely smears the profile at all.
+#: On one page its score curve was flat to within a few percent across half a degree and
+#: it picked the wrong side, rotating a level page to 0.2 degrees off.  The staff lines
+#: then drifted nine pixels end to end, both staves measured short, neither clef was
+#: read, and the first chord of the page was never looked for.  At full resolution the
+#: same score is sharp, so it is worth a second look.
+#:
+#: Only a clear win is acted on.  Across every image in this repo the best angle scores
+#: at most 1.12x the coarse one on a page the coarse pass got right, and 3.37x on the
+#: page it got wrong.  In between is noise, and re-rotating on noise costs a resampling
+#: and moves readings that were already correct: at 1.0 it turned the treble clef of one
+#: real page into a bass clef and took every pitch on it a twelfth out of place.
+SKEW_REFINE_GAIN = 1.5
+
+#: How far the second look may move the angle.  The coarse pass is never wrong by much,
+#: since it resolves the angle to a twentieth of a degree; it is wrong about which side
+#: of a flat maximum to sit on.
+SKEW_REFINE_SPAN = 0.6
+
+
+def refine_skew(mask, span=SKEW_REFINE_SPAN, gain=SKEW_REFINE_GAIN):
+    """A second look at the skew, on the full resolution mask.
+
+    Returns the extra rotation to apply, or 0.0 when the first estimate was good
+    enough, which is the answer for all but a badly flat score curve.
+    """
+    binary = mask.astype(np.float32)
+
+    def score(angle):
+        if abs(angle) < 1e-9:
+            return _skew_score(binary)
+        return _skew_score(ndimage.rotate(binary, angle, reshape=False, order=0,
+                                          cval=0.0))
+
+    here = score(0.0)
+    if here <= 0:
+        return 0.0
+    best = max(np.arange(-span, span + 1e-9, 0.05), key=score)
+    best = max(np.arange(best - 0.05, best + 0.05 + 1e-9, 0.01), key=score)
+    if score(best) < here * gain:
+        return 0.0
+    return float(round(best, 2))
+
+
 def rotate(gray, angle):
     """Rotate a grayscale image, filling the corners with page white."""
     if abs(angle) < 0.01:
@@ -206,7 +253,14 @@ def prepare(raw_bytes, max_dim=MAX_DIM):
     gray, orig_w, orig_h = load_gray(raw_bytes)
     gray, scale = downscale(gray, max_dim)
     angle = estimate_skew(gray)
-    gray = rotate(gray, angle)
+    rotated = rotate(gray, angle)
+    extra = refine_skew(binarize(rotated))
+    if extra:
+        # Rotated once from the original rather than twice in a row: every resampling
+        # softens the ink, and the reader measures glyphs a pixel or two wide.
+        angle = round(angle + extra, 2)
+        rotated = rotate(gray, angle)
+    gray = rotated
     mask = binarize(gray)
     _thickness, unit = estimate_scale(mask)
     if unit:

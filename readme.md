@@ -12,7 +12,15 @@ Everything below is plain numpy and scipy. No model, no network, same answer eve
 
 1. **Prepare.** Decode, honour EXIF rotation, downscale so the long side is 2200px, find the
 skew angle by rotating a small copy until the row-darkness profile spikes hardest, and threshold
-adaptively so a lighting ramp across the page does not eat half the ink.
+adaptively so a lighting ramp across the page does not eat half the ink. The small copy is 900px
+wide, where a whole page of music is a couple of hundred rows tall and a fifth of a degree hardly
+moves the profile, so the angle gets a second look at full resolution where the same score is
+sharp. That look only acts on a clear win, three times the score rather than a few percent:
+asked to act on any improvement at all it moved four pages that were reading correctly, and on
+one of them turned a treble clef into a bass clef, which is every pitch on the staff a twelfth
+out of place with nothing about the reading looking wrong. On the page that needed it, the coarse
+pass had rotated a level page 0.2 degrees off and cost it both clefs, both key signatures and its
+first chord.
 2. **Scale.** The commonest vertical black run on a page of music is the thickness of a staff
 line and the commonest vertical white run is the gap between two of them, so the staff space
 falls out of two histograms. Every threshold after this is written in staff spaces, so the
@@ -22,10 +30,14 @@ sweep the line spacing, predict the other four lines and keep the guess only if 
 predicted rows are inked across the same span. A photo
 has page margins, so a staff almost never spans the frame and asking which rows are dark all the
 way across does not work. That span is measured across a line's rows, one either side, and not
-off a single row of pixels: deskew leaves a fraction of a degree behind, so a line drifts a
+off a single row of pixels: deskew can leave a fraction of a degree behind, so a line drifts a
 pixel or two end to end and no one row is all of it. Measured off one row, a staff came out
 232 pixels short at the left, which hid its clef, its key signature and the left hand of its
-first chord, all without anything about the reading looking wrong.
+first chord, all without anything about the reading looking wrong. A pixel either side is as far
+as that goes, because the same rows decide whether a candidate staff is inked enough to be a
+staff: a span that tolerated more drift than the score does would hand a badly drifting staff a
+full width span it could not support and drop the staff altogether, which is worse. Drift past
+that is the skew estimate's problem, and step 1 is where it is dealt with.
 4. **Noteheads.** Correlate a notehead-shaped outline against the image with the staff lines
 erased, and keep the peaks. It is a small bank of outlines rather than one, because a whole note
 is a different shape: wider, rounder and upright instead of leaning. Matching an outline rather
