@@ -8,7 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, redirect, request, response, static_file, template
 
-from sheeter import geometry, pipeline, store, verify
+from sheeter import geometry, keysig, pipeline, store, verify
 
 app = Bottle()
 
@@ -126,7 +126,22 @@ def _analyze_and_save(raw, filename, content_type, extension, previous=None):
     if VERIFY_MODE == "auto" and verify.available():
         document = verify.verify_analysis(document, processed)
         pipeline.name_everything(document)
+    _keep_picked_key(document, previous)
     return store.save(document, raw, extension, processed)
+
+
+def _keep_picked_key(document, previous):
+    """Carry a key the reader chose onto a fresh reading of the same page.
+
+    A better reading of the page does not make the key a different key.  Somebody who
+    looked at the photo and said what it was should not have to say it again after
+    every re-analysis, so the choice outlives the reading it was made on.
+    """
+    picked = (previous or {}).get("key_override")
+    if picked is not None:
+        document["key_override"] = picked
+        pipeline.set_key(document, picked)
+    return document
 
 
 def _reanalyze(analysis_id):
@@ -161,7 +176,9 @@ def show(analysis_id):
                     items=store.listing(limit=12),
                     verify_available=_verify_offered(),
                     stale=not _current(document),
-                    engine_version=geometry.GEOMETRY_VERSION)
+                    engine_version=geometry.GEOMETRY_VERSION,
+                    keysig=keysig, key_fifths=keysig.current(document),
+                    key_picked=document["key_override"] is not None)
 
 
 @app.route("/a/<analysis_id>/analysis.json")
@@ -233,6 +250,42 @@ def reanalyze(analysis_id):
     return redirect("/a/%s" % analysis_id)
 
 
+@app.route("/a/<analysis_id>/key", method="POST")
+def set_key(analysis_id):
+    """Put a reading in the key the reader picked off the photo.
+
+    No image is needed and nothing is measured again: a notehead's y is a staff
+    position whatever the key is, so this is arithmetic on the stored reading and
+    returns straight away.  "auto" is the way back, and it does need the photo, since
+    the detected key is not kept anywhere once a choice has overwritten it.
+    """
+    wanted = (request.forms.get("fifths") or "").strip()
+    document = _load(analysis_id)
+    if document is None:
+        return _render_index("That analysis is no longer here.", 404)
+
+    if wanted == "auto":
+        if document["key_override"] is not None:
+            # Saved before re-analyzing, because _reanalyze reads the document back off
+            # disk and carries the choice forward: clearing it only in memory here
+            # would hand the old choice straight back to the new reading.
+            document["key_override"] = None
+            store.save_doc(document)
+            if _reanalyze(analysis_id) is None:
+                return _render_index("That analysis could not be re-analyzed.", 404)
+        return redirect("/a/%s" % analysis_id)
+
+    try:
+        fifths = int(wanted)
+        pipeline.set_key(document, fifths)
+    except ValueError:
+        # A key nobody could have picked is a broken form, not something to act on.
+        return redirect("/a/%s" % analysis_id)
+    document["key_override"] = fifths
+    store.save_doc(document)
+    return redirect("/a/%s" % analysis_id)
+
+
 @app.route("/a/<analysis_id>/delete", method="POST")
 def delete(analysis_id):
     try:
@@ -252,6 +305,9 @@ def reverify(analysis_id):
     with open(store.path(analysis_id, "processed.png"), "rb") as handle:
         document = verify.verify_analysis(document, handle.read())
     pipeline.name_everything(document)
+    # A picked key needs no defending here: every path through verify_analysis either
+    # hands back this document untouched or goes through apply_correction, which puts
+    # the reader's key back itself.
 
     # The call above takes five to twenty-five seconds, and waitress serves other
     # requests meanwhile.  Writing back the copy read before it would quietly undo a

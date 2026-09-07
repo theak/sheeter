@@ -6,12 +6,13 @@ about, and renaming takes a redirect target from the form, which is worth pinnin
 
 import io
 import json
+import re
 import urllib.parse
 
 import pytest
 from PIL import Image
 
-from sheeter import geometry, naming, pitches, schema, store
+from sheeter import geometry, keysig, naming, pitches, schema, store
 
 
 @pytest.fixture(autouse=True)
@@ -35,9 +36,19 @@ def png_bytes(width=600, height=400):
     return out.getvalue()
 
 
+LINES = [100.0, 120.0, 140.0, 160.0, 180.0]
+
+
 def make_doc(raw, title):
     names = ["C4", "E4", "G4"]
-    notes = [pitches.make_note(*pitches.parse_name(n), 100.0, 140.0) for n in names]
+    # Each notehead sits at the y its own pitch is written on.  A document where
+    # every note claims the middle line is not one the reader could produce, and
+    # anything that re-derives a pitch from where the notehead is would be right to
+    # make nonsense of it.
+    notes = [pitches.make_note(*pitches.parse_name(n), 100.0,
+                               pitches.step_to_y(pitches.parse_name(n)[0], LINES,
+                                                 "treble"))
+             for n in names]
     notes.sort(key=lambda n: n["midi"])
     part = {"staff": 0, "hand": None, "duration_hint": "quarter-or-shorter",
             "dotted": False, "notes": notes, "chord": naming.name_chord(names)}
@@ -52,11 +63,22 @@ def make_doc(raw, title):
         "index": 0, "y_range": [80, 200], "x_range": [0, 600], "grand": False,
         "cut_off": False,
         "staves": [{"index": 0, "hand": None, "clef": "treble", "clef_confidence": 0.9,
-                    "lines": [100.0, 120.0, 140.0, 160.0, 180.0], "unit": 20.0,
+                    "lines": LINES, "unit": 20.0,
                     "x_range": [0, 600], "key_fifths": 0, "key_confidence": 0.9,
                     "cut_off": False}],
         "events": [event]}]
     return schema.validate_analysis(doc)
+
+
+@pytest.fixture
+def pickable():
+    """A reading whose stored photo is a real image, so it can be read again.
+
+    The plain ``saved`` fixture keeps a string where the photo goes, which is enough
+    for everything that never re-reads it and no use to anything that does.
+    """
+    raw = png_bytes(width=604)
+    return store.save(make_doc(raw, "Bars 1 to 4"), raw, "png", raw)
 
 
 @pytest.fixture
@@ -287,3 +309,139 @@ class TestReadingAgain:
     def test_re_analyzing_something_that_is_gone_does_not_break(self, app):
         status, _headers, _ = call(app, "POST", "/a/000000000000/reanalyze")
         assert status.startswith("404")
+
+
+class TestKeyPicker:
+    """Picking the key signature off the photo, when the reader got it wrong.
+
+    The key decides the alteration of every notehead without an accidental of its
+    own, so one misread signature respells a whole page.  A person can see the
+    signature in a second, and this is how they say so.
+    """
+
+    @staticmethod
+    def names(analysis_id):
+        doc = store.load(analysis_id)
+        return [note["name"]
+                for system in doc["systems"]
+                for event in system["events"]
+                for part in event["parts"]
+                for note in part["notes"]]
+
+    def test_picking_a_key_respells_the_page_and_is_remembered(self, app, saved):
+        assert self.names(saved) == ["C4", "E4", "G4"]
+        status, headers, _ = call(app, "POST", "/a/%s/key" % saved,
+                                  {"fifths": "-3"})
+        assert status.startswith("303")
+        assert headers["Location"].endswith("/a/%s" % saved)
+        assert self.names(saved) == ["C4", "Eb4", "G4"], "three flats reach the E"
+        assert store.load(saved)["key_override"] == -3
+
+    def test_the_pick_reaches_every_staff(self, app, saved):
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "2"})
+        doc = store.load(saved)
+        assert all(staff["key_fifths"] == 2
+                   for system in doc["systems"] for staff in system["staves"])
+
+    def test_the_chord_is_named_again_under_the_new_key(self, app, saved):
+        was = store.load(saved)["systems"][0]["events"][0]["parts"][0]["chord"]
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "-3"})
+        now = store.load(saved)["systems"][0]["events"][0]["parts"][0]["chord"]
+        assert was["symbol"] != now["symbol"]
+
+    def test_playback_follows_the_new_spelling(self, app, saved):
+        before = self.midis(saved)
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "-3"})
+        assert self.midis(saved) == [before[0], before[1] - 1, before[2]]
+
+    @staticmethod
+    def midis(analysis_id):
+        doc = store.load(analysis_id)
+        return [note["midi"] for system in doc["systems"]
+                for event in system["events"] for part in event["parts"]
+                for note in part["notes"]]
+
+    def test_going_back_to_the_photo_clears_the_choice(self, app, pickable):
+        call(app, "POST", "/a/%s/key" % pickable, {"fifths": "-3"})
+        assert store.load(pickable)["key_override"] == -3
+        status, _headers, _ = call(app, "POST", "/a/%s/key" % pickable,
+                                   {"fifths": "auto"})
+        assert status.startswith("303")
+        assert store.load(pickable)["key_override"] is None
+
+    def test_going_back_reads_the_photo_again_rather_than_reusing_the_choice(
+            self, app, pickable):
+        """The bug the save-before-re-analyze ordering exists to stop.
+
+        _reanalyze reads the document back off disk and carries the choice forward,
+        so clearing it only in memory would hand the old key straight to the fresh
+        reading and the reset would do nothing at all.
+        """
+        call(app, "POST", "/a/%s/key" % pickable, {"fifths": "-3"})
+        call(app, "POST", "/a/%s/key" % pickable, {"fifths": "auto"})
+        doc = store.load(pickable)
+        assert doc["key_override"] is None
+        # The stored photo is blank, so a real re-reading finds no staves at all and
+        # says it was made by the engine running now.  Both would be untrue of the
+        # hand-built document that was there before.
+        assert doc["engine"]["geometry"] == geometry.GEOMETRY_VERSION
+        assert doc["systems"] == []
+
+    def test_a_reset_with_nothing_to_reset_leaves_the_reading_alone(self, app, saved):
+        was = store.load(saved)["created_at"]
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "auto"})
+        assert store.load(saved)["created_at"] == was, "not re-read for nothing"
+
+    @pytest.mark.parametrize("bad", ["", "8", "-8", "two flats", "1.5", "0x2"])
+    def test_a_key_nobody_could_have_picked_changes_nothing(self, app, saved, bad):
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": bad})
+        assert self.names(saved) == ["C4", "E4", "G4"]
+        assert store.load(saved)["key_override"] is None
+
+    def test_picking_for_something_that_is_gone_does_not_break(self, app):
+        status, _headers, _ = call(app, "POST", "/a/000000000000/key",
+                                   {"fifths": "-2"})
+        assert status.startswith("404")
+
+    def test_the_page_offers_every_key_as_a_picture(self, app, saved):
+        _s, _h, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        assert page.count('name="fifths" value=') == 15
+        assert "B♭ major / G minor" in page
+        assert page.count("<svg class=\"keysig\"") == 16, "fifteen, plus the current one"
+
+    def test_the_page_marks_the_key_it_is_in(self, app, saved):
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "-2"})
+        _s, _h, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        marked = re.findall(r'value="(-?\d+)"\s*aria-current="true"', page)
+        assert marked == ["-2"], "one choice is marked, and it is the one in force"
+        assert "You picked this" in page
+        assert "Use the key read from the photo" in page
+
+    def test_the_way_back_is_only_offered_when_there_is_one(self, app, saved):
+        _s, _h, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        assert "Read from the photo" in page
+        assert "Use the key read from the photo" not in page
+
+    def test_a_picked_key_survives_re_analysis(self, app, pickable):
+        call(app, "POST", "/a/%s/key" % pickable, {"fifths": "-3"})
+        status, _headers, _ = call(app, "POST", "/a/%s/reanalyze" % pickable)
+        assert status.startswith("303")
+        doc = store.load(pickable)
+        assert doc["engine"]["geometry"] == geometry.GEOMETRY_VERSION, "really re-read"
+        assert doc["key_override"] == -3, "a better reading, still the same key"
+
+    def test_the_picker_is_not_offered_when_nothing_was_read(self, app):
+        """A page with no staves has nothing to respell, so there is nothing to pick."""
+        raw = png_bytes(width=603)
+        doc = make_doc(raw, "Blank")
+        doc["systems"] = []
+        ident = store.save(doc, raw, "png", raw)
+        _s, _h, body = call(app, "GET", "/a/%s" % ident)
+        assert "key-picker" not in body.decode("utf-8")
+
+    def test_the_pictures_are_the_ones_keysig_draws(self, app, saved):
+        _s, _h, body = call(app, "GET", "/a/%s" % saved)
+        assert keysig.svg(-2, False) in body.decode("utf-8")

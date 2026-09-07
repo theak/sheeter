@@ -632,6 +632,20 @@ def _enforce_trust(before, after):
     return after
 
 
+def _enforce_picked_key(doc):
+    """Put back a key signature the reader chose, whatever the model saw.
+
+    A picked key is stored at confidence 1.0, which is enough for _enforce_trust to
+    restore it on any system the pass had no other reason to doubt.  This is for the
+    systems it did doubt: an unsure clef or one faint notehead is not a reason to
+    overrule somebody who has the page in front of them on what the signature is, and
+    a key the model moved would respell every note under it.
+    """
+    if doc["key_override"] is not None:
+        pipeline.set_key(doc, doc["key_override"])
+    return doc
+
+
 def apply_correction(doc, payload):
     """Merge a ``corrected_reading`` payload into *doc*.
 
@@ -650,6 +664,7 @@ def _correct(doc, payload):
     try:
         merged, resolved = _merge(doc, payload)
         out = _enforce_trust(doc, merged)
+        _enforce_picked_key(out)
         schema.validate_analysis(out)
     except Exception:
         return doc, 0
