@@ -119,11 +119,18 @@ def choices():
 def current(document):
     """The key this reading is in, as one number.
 
-    A document keeps a key per staff, since a page could in principle be engraved
-    with two, and the picker sets one for all of them.  The first staff of the first
-    system is what it shows.
+    A choice wins over the staves.  They agree wherever a document came through
+    pipeline.set_key, which is every route that can record one, but the picker says
+    "You picked this" from the choice and shows the key from here, and those two must
+    never be able to disagree in front of a reader.
+
+    Otherwise it is the first staff of the first system.  A document keeps a key per
+    staff, since a page could in principle be engraved with two, and the picker sets
+    one for all of them.
     """
+    if document["key_override"] is not None:
+        return document["key_override"]
     for system in document["systems"]:
         for staff in system["staves"]:
             return staff["key_fifths"]
-    return document["key_override"] or 0
+    return 0

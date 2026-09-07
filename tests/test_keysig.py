@@ -132,3 +132,24 @@ class TestChoices:
         assert row["label"] == "B♭ major / G minor"
         assert row["count"] == "2 flats"
         assert row["svg"].startswith("<svg")
+
+
+class TestWhatToShow:
+    """What the picker's button says the reading is in."""
+
+    @staticmethod
+    def doc(override, fifths):
+        staff = {"index": 0, "key_fifths": fifths}
+        return {"key_override": override,
+                "systems": [{"staves": [staff], "events": []}]}
+
+    def test_it_reads_the_staves_when_nobody_has_chosen(self):
+        assert keysig.current(self.doc(None, -2)) == -2
+
+    def test_a_choice_wins_over_the_staves(self):
+        # They agree everywhere set_key has been, and the badge beside this says
+        # "You picked this", so the two must not be able to disagree on the page.
+        assert keysig.current(self.doc(3, -2)) == 3
+
+    def test_a_page_with_nothing_read_off_it_is_c_major(self):
+        assert keysig.current({"key_override": None, "systems": []}) == 0
