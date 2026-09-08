@@ -39,14 +39,24 @@ staff: a span that tolerated more drift than the score does would hand a badly d
 full width span it could not support and drop the staff altogether, which is worse. Drift past
 that is the skew estimate's problem, and step 1 is where it is dealt with.
 4. **Noteheads.** Correlate a notehead-shaped outline against the image with the staff lines
-erased, and keep the peaks. It is a small bank of outlines rather than one, because a whole note
+erased, and keep the peaks. Two things that are not notes answer to that outline and are ruled
+out by what they are rather than by score, which does not separate them: a beam, which is a
+notehead thick and so several spaces wide, and the thick barline that ends a piece, which is a
+notehead wide and the whole staff tall. The first is caught by how far notehead-thick ink runs
+sideways through the peak, the second by nothing real ever sitting at the end of a staff, because
+the barline is drawn after the last note. A steeply slanted beam still gets through: it presents
+too little ink on any one row to tell from a notehead. It is a small bank of outlines rather than one, because a whole note
 is a different shape: wider, rounder and upright instead of leaning. Matching an outline rather
 than classifying connected components is what makes dense music work, since a stack of thirds is
 one blob but three separate peaks, and a hollow notehead nicked by staff-line removal is still
 one peak.
 5. **Pitch.** A notehead's vertical position against the five lines is a diatonic step, which
 becomes a pitch once you know the clef (read from the height of the glyph at the left edge) and
-the key signature (the run of accidentals right after it). Accidentals written in the bar are
+the key signature (the run of accidentals right after it). The signature is fitted rather than
+spelled out: it is a rigid template, so what matters is how well the run sits on the positions it
+must occupy, not what letter each glyph is nearest. Asking for the letter is the fragile way
+round, since on a photocopy a flat's bowl measured over half a step high and the lone flat of a
+B flat signature came out as a C, which lost the page its key and read every B in it natural. Accidentals written in the bar are
 applied to the notes after them, ledger lines are confirmed before a note outside the staff is
 believed, and stems group noteheads into chords.
 6. **Naming.** Every pitch class present is tried as the root of the chord, each reading is

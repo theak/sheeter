@@ -130,6 +130,71 @@ class TestStaffFinding:
         assert geometry.group_systems(staves, mask, unit) == [[0], [1]]
 
 
+class TestNotANotehead:
+    """Two things the correlator answers on that are not notes.
+
+    Both came off real pages: a beam read as an extra note over the first chord of one,
+    which also dragged that chord's label off the note it belonged to, and the barline
+    at the end of a piece read as a ladder of three notes in each hand on five of them.
+    """
+
+    def _read(self, mask, lines, unit=20, x_range=None):
+        staff = {"lines": lines, "unit": float(unit),
+                 "x_range": x_range or [40, mask.shape[1] - 40]}
+        thickness, measured = geometry.estimate_scale(mask)
+        cleaned = geometry.remove_staff_lines(
+            mask, geometry.staff_line_mask(mask, thickness, measured), thickness,
+            measured)
+        return geometry.detect_noteheads(mask, cleaned, staff, (0, mask.shape[0]),
+                                         float(unit), thickness, 100)
+
+    def test_a_beam_is_not_a_note(self):
+        """A beam is a notehead thick, which is why the outline answers on it at all.
+        What it is not is a notehead wide: it runs on for spaces."""
+        unit = 20
+        mask, lines = staff_image(unit=unit, width=700, height=280)
+        draw_notehead(mask, 300, lines[3], unit)
+        # As thick as a notehead, which is what a photocopied beam measures and what
+        # makes the outline answer on it: a hairline beam it never looks at.
+        beam = int(lines[0] - unit)                  # a space above the staff
+        mask[beam - int(unit * 0.65): beam + int(unit * 0.65), 296:420] = True
+        mask[beam: int(lines[3]), 296:300] = True    # the stem it hangs from
+        assert [n["k"] for n in self._read(mask, lines, unit)] == [2], \
+            "the note, and nothing on the beam"
+
+    def test_a_notehead_on_a_ledger_line_is_still_a_note(self):
+        """The beam test must not take a ledger line for a beam.  A ledger line is
+        thin, so eroding thin ink away before measuring is what separates them, and
+        without that every note below the staff would be thrown away."""
+        unit = 20
+        mask, lines = staff_image(unit=unit, width=700, height=320)
+        y = int(lines[4] + unit)                     # on the first ledger line below
+        draw_notehead(mask, 300, y, unit)
+        mask[y - 2:y + 2, 280:320] = True            # and the ledger line itself
+        found = self._read(mask, lines, unit)
+        assert [n["k"] for n in found] == [-2]
+
+    def test_the_barline_that_ends_a_staff_is_not_a_chord(self):
+        """The thick barline that ends a piece is a notehead's width across and the
+        whole staff tall, so the correlator finds a note at every step down it."""
+        unit = 20
+        mask, lines = staff_image(unit=unit, width=760, height=280, margin=100)
+        draw_notehead(mask, 300, lines[3], unit)
+        end = 660                                    # where the staff lines stop
+        mask[int(lines[0]):int(lines[4]) + 1, end - 16:end + 16] = True
+        assert [n["k"] for n in self._read(mask, lines, unit, x_range=[100, end])] \
+            == [2], "the note, and nothing on the barline"
+
+    def test_a_staff_the_frame_cut_off_keeps_its_last_note(self):
+        """The edge rule is a fact about barlines, and a staff the photo cut off has
+        none: its last ink is wherever the frame stopped, so a note can sit right at
+        it and must be kept."""
+        unit = 20
+        mask, lines = staff_image(unit=unit, width=420, height=280, margin=0)
+        draw_notehead(mask, 402, lines[3], unit)
+        assert [n["k"] for n in self._read(mask, lines, unit, x_range=[0, 420])] == [2]
+
+
 class TestNoteheads:
     def _read(self, filled=True, unit=20):
         mask, lines = staff_image(unit=unit)
@@ -223,6 +288,63 @@ class TestKeySignature:
     def test_a_lone_natural_is_not_a_key_signature(self):
         assert geometry.key_signature_run(
             [self._accidental("natural", 70, 0)], clef_end=60, unit=20) == []
+
+
+class TestKeySignatureFit:
+    """A signature is a rigid template, so it is fitted rather than spelled out.
+
+    Asking what letter each glyph is nearest is the fragile way round: on a photocopy a
+    flat's bowl measured 0.28 spaces high, over half a step, so the lone flat of a B
+    flat signature came out as a C, the run was thrown away, and the page read in C
+    major with every B in it natural.
+    """
+
+    UNIT = 20.0
+    LINES = [60.0, 80.0, 100.0, 120.0, 140.0]
+
+    def staff(self):
+        return {"lines": list(self.LINES), "unit": self.UNIT}
+
+    def run(self, kind, *offsets):
+        """A run of *kind* placed at the template positions, each off by *offsets*."""
+        order = pitches.FLAT_ORDER if kind == "flat" else pitches.SHARP_ORDER
+        out = []
+        for letter, off in zip(order, offsets):
+            step = [s for s in range(20, 45)
+                    if pitches.step_letter(s) == letter
+                    and 40 <= pitches.step_to_y(s, self.LINES, "treble") <= 160][0]
+            y = pitches.step_to_y(step, self.LINES, "treble") + off * self.UNIT
+            out.append({"kind": kind, "y": y})
+        return out
+
+    def test_a_signature_dead_on_its_positions_is_read(self):
+        assert geometry.read_key_signature(self.run("flat", 0.0, 0.0),
+                                           self.staff(), "treble") == (-2, 0.92)
+        assert geometry.read_key_signature(self.run("sharp", 0.0, 0.0, 0.0),
+                                           self.staff(), "treble") == (3, 0.92)
+
+    def test_a_glyph_measured_over_half_a_step_out_is_still_read(self):
+        """The real case, and the reason for fitting: 0.28 spaces high."""
+        assert geometry.read_key_signature(self.run("flat", -0.28),
+                                           self.staff(), "treble") == (-1, 0.92)
+
+    def test_a_glyph_nowhere_near_is_not_a_signature(self):
+        """The other real case: a first chord's own accidental standing where a
+        signature would be, on a page in C.  It missed by 1.70 spaces."""
+        got = geometry.read_key_signature(self.run("flat", 1.70),
+                                          self.staff(), "treble")
+        assert got[1] == 0.5, "low confidence, which the caller takes as no signature"
+
+    def test_one_stray_glyph_spoils_the_run(self):
+        assert geometry.read_key_signature(self.run("flat", 0.0, 1.5),
+                                           self.staff(), "treble")[1] == 0.5
+
+    def test_sharps_and_flats_together_are_not_a_signature(self):
+        mixed = self.run("flat", 0.0) + self.run("sharp", 0.0)
+        assert geometry.read_key_signature(mixed, self.staff(), "treble") == (0, 0.4)
+
+    def test_no_run_is_c_major(self):
+        assert geometry.read_key_signature([], self.staff(), "treble") == (0, 0.9)
 
 
 class TestPreprocess:
