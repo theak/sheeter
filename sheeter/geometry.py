@@ -27,7 +27,7 @@ from .preprocess import estimate_scale, run_lengths
 #: and on re-upload, when its version is not this one.  Without that, an image analysed
 #: before a fix keeps showing the reading from before the fix, forever, because uploads
 #: are content addressed and the old reading is what the address points at.
-GEOMETRY_VERSION = "4"
+GEOMETRY_VERSION = "5"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
@@ -513,6 +513,23 @@ def classify_accidental(comp):
     return ("natural" if stagger > 0.075 else "sharp"), centre
 
 
+#: How far notehead-thick ink may run horizontally through a notehead, in staff spaces.
+#: Past this it is a beam, which is the same thickness as a notehead and the reason the
+#: correlator answers on one at all.  Thin ink is eroded away before measuring, so a
+#: ledger line or a staff line remnant through a notehead cannot lengthen the run.
+#:
+#: Measured over every image here, the widest run through a real notehead is 1.27
+#: spaces, and the beams read as notes ran 3.45 and 3.77.  This catches a level beam.
+#: A steeply slanted one presents little ink on any one row, measures 1.36, and is not
+#: separable from a notehead this way, so two of those still get through on the page
+#: this was written for.
+BEAM_RUN_MAX = 1.7
+
+#: How close to the end of its staff a notehead may sit, in staff spaces.  Everything
+#: at or past the edge was the final barline; the nearest real notehead was 1.2 spaces
+#: inside it, so this sits between them with room either way.
+BARLINE_MARGIN = 0.35
+
 #: An accidental's height and width in staff spaces, wide enough for every font.
 ACCIDENTAL_H = (1.85, 3.7)
 ACCIDENTAL_W = (0.22, 1.25)
@@ -750,6 +767,18 @@ def _ledger_row_ok(mask, x, staff, unit, thickness, k):
     return reach_out >= unit * 0.78
 
 
+def _thick_run(row, x):
+    """Width of the unbroken ink containing *x* in *row*, in pixels."""
+    if not row[x]:
+        return 0
+    left = right = x
+    while left > 0 and row[left - 1]:
+        left -= 1
+    while right + 1 < len(row) and row[right + 1]:
+        right += 1
+    return right - left + 1
+
+
 def _longest_run(column, tolerate):
     """Longest run of ink down *column*, treating gaps of *tolerate* or fewer as ink.
 
@@ -896,11 +925,33 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
     # notehead centred half a space inside that edge has its template hanging off the
     # end of the region, scores low, and is lost: on two pages that was a right-hand
     # note reaching down into the gap, the lowest note of its chord each time.
+    # A staff ends with a barline, and the thick one that ends a piece is a notehead's
+    # width across and the whole staff tall, so the correlator finds a ladder of notes
+    # down it: seven on one page, and an extra event at the end of four others.  Nothing
+    # real is ever there, because the barline is drawn after the last note.  Measured
+    # over every image here, every notehead that lands within 1.2 spaces of the edge is
+    # one of those, and the nearest real one is further in than that.
+    #
+    # Unless the frame cut the staff off, in which case its last ink is wherever the
+    # photo stopped and a real notehead can sit right at it.
+    edge = staff["x_range"][1]
+    if edge < mask_ns.shape[1] - 2:
+        edge -= unit * BARLINE_MARGIN
+    else:
+        edge = float("inf")
+
     pad = int(round(unit * 1.2))
     lo, hi = max(0, band[0] - pad), min(mask_ns.shape[0], band[1] + pad)
     region = mask_ns[lo:hi, :]
     if not region.any():
         return []
+
+    # Ink a third of a space thick, which is what a notehead and a beam have and a
+    # staff line or a ledger line does not.  Eroding harder than this is worse, not
+    # better: a beam is only two thirds of a space thick on a photocopy, so taking half
+    # a space off it leaves a two pixel sliver and the test lands between rows.
+    thick_run = max(3, int(round(unit * 0.35)) | 1)
+    thick = ndimage.binary_erosion(region, structure=np.ones((thick_run, 1)))
 
     rims, sides, core = notehead_kernels(unit)
     erased = mask[lo:hi, :] & ~region
@@ -931,7 +982,7 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
     centres = ndimage.center_of_mass(peaks, labels, range(1, count + 1))
     out = []
     for cy, cx in centres:
-        if cx < x_from:
+        if cx < x_from or cx > edge:
             continue
         y = lo + cy
         if not band[0] <= y < band[1]:
@@ -950,6 +1001,14 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
         iy, ix = int(round(cy)), int(round(cx))
         if flanks[iy, ix] < FLANK_MIN:
             continue
+        # Measured on the row the notehead is placed on, not on the row the
+        # correlation peaked: the peak lands anywhere within the blob, and on a beam
+        # only two thirds of a space thick that is often a row where the eroded ink
+        # has already run out.
+        placed = int(round(pitches.step_to_y(step, staff["lines"], "treble"))) - lo
+        if 0 <= placed < thick.shape[0]:
+            if _thick_run(thick[placed], ix) > unit * BEAM_RUN_MAX:
+                continue    # a beam, not a note: notehead-thick ink that runs on
         score = float(response[iy, ix])
         filled_share = float(inside[iy, ix])
         # Snap to the grid: the pitch is what the staff says, not where the blob's
@@ -1013,25 +1072,55 @@ def key_signature_run(accidentals, clef_end, unit):
     return run
 
 
+#: How far a signature's accidental may sit from the position it must be at, in staff
+#: spaces, before the run is not a signature.
+#:
+#: A key signature is a rigid template.  Given the clef and whether the run is sharps or
+#: flats, every accidental's position is fixed, so the question worth asking is how well
+#: the run fits that template, not what letter each glyph is nearest.  Asking for the
+#: letter is the fragile way round: on a photocopied page a flat's bowl measured 0.28
+#: spaces high, which is over half a step, so the lone flat of a B flat signature came
+#: out as a C, the run was thrown away, and the page read in C major with every B in it
+#: natural and its E flats read as E.
+#:
+#: Measured over every image in this repo, a real signature fits to within 0.22 spaces,
+#: and the one run that is not a signature misses by 1.70: a first chord's own
+#: accidental standing where a signature would be, on a page in C.
+KEY_SIGNATURE_FIT = 0.4
+
+
+def _signature_miss(acc, letter, staff, clef):
+    """Distance from *acc* to the nearest staff position carrying *letter*, in pixels."""
+    step, _err = pitches.y_to_step(acc["y"], staff["lines"], clef)
+    best = None
+    for candidate in range(step - 4, step + 5):
+        if pitches.step_letter(candidate) != letter:
+            continue
+        miss = abs(acc["y"] - pitches.step_to_y(candidate, staff["lines"], clef))
+        if best is None or miss < best:
+            best = miss
+    return best if best is not None else float("inf")
+
+
 def read_key_signature(run, staff, clef):
     """Turn the key signature's accidentals into a number of fifths.
 
-    The letters are checked against the fixed order accidentals are written in, which
-    catches a stray glyph swept into the run: two flats that are not B and E are not a
-    key signature, and reporting low confidence is better than inventing one.
+    The run is fitted against the one pattern it could be, which catches a stray glyph
+    swept in after the clef: two flats that are nowhere near B and E are not a key
+    signature, and reporting low confidence is better than inventing one.
     """
     if not run:
         return 0, 0.9
     kinds = set(a["kind"] for a in run)
     if kinds not in ({"flat"}, {"sharp"}):
         return 0, 0.4
-    letters = [pitches.step_letter(pitches.y_to_step(a["y"], staff["lines"], clef)[0])
-               for a in run]
-    count = min(len(letters), 7)
-    expected = (pitches.FLAT_ORDER if "flat" in kinds else pitches.SHARP_ORDER)[:count]
+    order = pitches.FLAT_ORDER if "flat" in kinds else pitches.SHARP_ORDER
+    count = min(len(run), 7)
     fifths = -count if "flat" in kinds else count
-    if letters[:count] != expected:
-        return fifths, 0.5
+    allowed = staff["unit"] * KEY_SIGNATURE_FIT
+    for acc, letter in zip(run[:count], order):
+        if _signature_miss(acc, letter, staff, clef) > allowed:
+            return fifths, 0.5
     return fifths, 0.92
 
 

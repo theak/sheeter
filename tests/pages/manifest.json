@@ -33,7 +33,7 @@
     {
       "file": "giant_steps_crop.png",
       "source": "https://storage.googleapis.com/aks_public/processed.png",
-      "note": "The same line of Giant Steps at lower resolution, as the app's own straightened output.  Same ground truth.  Step 3's F sharp is a sharp broken into pieces by staff line removal and not yet read; step 5's E flat in the left hand is missed; a seventh event is a false positive.",
+      "note": "The same line of Giant Steps at lower resolution, as the app's own straightened output.  Same ground truth.  Step 3's F sharp is a sharp broken into pieces by staff line removal and not yet read; step 5's E flat in the left hand is missed.  The seventh event used to be a false positive: the final barline, read as a ladder of noteheads.",
       "key": 0,
       "events": 6,
       "steps": [
@@ -44,7 +44,7 @@
         {"right": ["C4", "F4", "Bb4"],   "left": ["Eb3", "G3"]},
         {"right": ["C4", "F4", "B4"],    "left": null}
       ],
-      "known_wrong": ["events", "3.right", "5.left"]
+      "known_wrong": ["3.right", "5.left"]
     },
     {
       "file": "search_for_peace.png",
@@ -98,6 +98,29 @@
         {"right": ["G4", "C5", "F5"],       "left": ["Eb3", "Bb3"]}
       ],
       "known_wrong": []
+    },
+    {
+      "file": "old_folks.png",
+      "source": "https://storage.googleapis.com/aks_public/oldfolks.png",
+      "note": "One flat, and the flat of the signature is drawn with a long ascender: its bowl measured 0.28 spaces high, over half a step, so the run read as a C rather than a B and the page came out in C major with every B in it natural.  It also had a beam read as a note over the first chord, which moved that chord's label off the note it belonged to, and its final barline read as a ladder of three notes in each hand.  The owner reported all of those.  Steps 12 and 13 are theirs too: the C-7 is G, E flat, B flat and the F7 keeps the E flat, and both E flats are still read as E because the flat that says so is fused with the noteheads it sits against.  Two spurious notes remain, on step 5 and step 7, both on a slanted beam whose ink is too short on any one row to tell from a notehead.  Everything else here is unchecked.",
+      "key": -1,
+      "events": null,
+      "steps": [
+        {"right": ["F4"], "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": null, "left": null},
+        {"right": ["Bb3", "Eb4", "G4"], "left": null},
+        {"right": ["A3", "Eb4"],        "left": null}
+      ],
+      "known_wrong": ["12.right", "13.right"]
     }
   ]
 }
