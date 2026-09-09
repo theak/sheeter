@@ -169,16 +169,43 @@ def set_key(document, fifths):
     return document
 
 
+
+# --------------------------------------------------------------------------
+# correcting a reading by hand
+#
+# What is durable and what has to be replayed is decided by one thing: whether the
+# field a correction writes is re-derived from the geometry afterwards.
+#
+# Moving, adding and removing a notehead all change the geometry itself, so they
+# survive anything that re-reads it: restate_staff walks the noteheads that are
+# there and works each pitch out from its own y.  A written accidental is the one
+# correction that does not survive, because re-deriving reads that field and will
+# resolve it against the key instead.  So that is the only kind kept for replay, and
+# replaying a structural change onto a structure that already contains it is a
+# question this deliberately never has to answer.
+
+
 #: What a reader may write in front of a notehead by hand.  Double accidentals are
 #: deliberately absent: they exist in ACCIDENTAL_ALTER because the reader can detect
 #: one on the page, but nobody fixing a misread note by eye reaches for a double sharp,
 #: and offering five buttons where three will do is how a simple tool stops being one.
 EDITABLE_ACCIDENTALS = ("sharp", "flat", "natural")
 
-#: How far a stored edit's notehead may have moved before the edit is taken to be about
-#: a different note and dropped.  Half a staff space: less than the gap between one
-#: staff position and the next, so an edit can never slide onto its neighbour.
-EDIT_ANCHOR_SLACK = 0.5
+#: How far a stored correction's notehead may have moved before the correction is taken
+#: to be about some other note.  A quarter of a step, and a step is half a staff space,
+#: so it scales with the photo instead of being a pixel count: a page at unit 20 allows
+#: 2.5px, which is loose enough to survive a re-reading nudging a notehead and tight
+#: enough that a correction can never slide onto the staff position next door.
+EDIT_ANCHOR_STEP_FRACTION = 0.25
+
+#: How far above and below its own staff the pitch menu reaches, in diatonic steps.
+#: An octave either side covers what a grand staff is actually written in, including
+#: the ledger lines the reader can read, without a menu nobody can scroll.
+PITCH_MENU_REACH = 7
+
+
+def _anchor_slack(staff):
+    return (staff["unit"] or 20.0) / 2.0 * EDIT_ANCHOR_STEP_FRACTION
 
 
 def measure_accidentals(system, staff):
@@ -224,104 +251,223 @@ def measure_accidentals(system, staff):
         part["notes"][position] = restate_note(note, step, alter, staff, from_key)
 
 
+def pitch_choices(staff):
+    """The pitches the menu offers on *staff*, low to high.
+
+    Spelled without an accidental, because the three accidental buttons are what say
+    that: the menu picks the staff position, which is the thing a notehead in the wrong
+    space actually got wrong.
+    """
+    bottom = pitches.CLEF_BOTTOM_LINE_STEP[staff["clef"]]
+    out = []
+    for step in range(bottom - PITCH_MENU_REACH, bottom + 9 + PITCH_MENU_REACH):
+        out.append({"step": step, "name": pitches.step_to_name(step),
+                    "pretty": pitches.step_to_pretty(step)})
+    return out
+
+
+# ---------------------------------------------------------------- finding things
+
+
+def _system_of(document, system_index):
+    return next((s for s in document["systems"] if s["index"] == system_index), None)
+
+
 def _staff_of(system, staff_index):
     return next((s for s in system["staves"] if s["index"] == staff_index), None)
 
 
-def _note_at(document, edit):
-    """The note a stored edit points at, or None if it no longer points at one."""
-    system = next((s for s in document["systems"]
-                   if s["index"] == edit.get("system")), None)
-    if system is None:
-        return None, None
-    event = next((e for e in system["events"] if e["index"] == edit.get("event")), None)
-    if event is None:
-        return None, None
-    part = next((p for p in event["parts"] if p["staff"] == edit.get("staff")), None)
-    if part is None:
-        return None, None
-    position = edit.get("note")
-    if not isinstance(position, int) or not 0 <= position < len(part["notes"]):
-        return None, None
-    note = part["notes"][position]
-    # The y is the anchor of last resort.  Indices move when a chord is deleted and are
-    # fixed up when it is, but a re-analysis renumbers everything, and an edit that has
-    # come to point at some other notehead is worse than an edit that is dropped.
-    if abs(note["y"] - edit.get("y", note["y"])) > EDIT_ANCHOR_SLACK:
-        return None, None
-    return system, note
+def _locate(document, system_index, event_index, staff_index):
+    """``(system, staff, event, part)``, any of which may be None.
 
-
-def apply_edits(document):
-    """Re-apply every stored accidental edit, then re-spell and re-name.
-
-    Called after anything that re-derives pitches from the key or from the vision
-    pass, both of which re-read a notehead's accidental off the staff and would
-    otherwise quietly undo a person's correction.  Edits that no longer point at a
-    notehead are dropped from the document rather than kept as dead weight.
+    *part* is None when that staff plays nothing in that event, which is not an error:
+    it is exactly the case a reader is in when a whole hand went missing and they want
+    to put a note back.
     """
-    kept, touched = [], []
-    for edit in document["edits"]:
-        if edit.get("kind") != "accidental":
-            kept.append(edit)
-            continue
-        system, note = _note_at(document, edit)
-        if note is None:
-            continue
-        note["accidental"] = edit.get("value")
-        kept.append(edit)
-        pair = (system["index"], edit.get("staff"))
-        if pair not in touched:
-            touched.append(pair)
-    document["edits"] = kept
-    for system_index, staff_index in touched:
-        system = next(s for s in document["systems"] if s["index"] == system_index)
-        staff = _staff_of(system, staff_index)
-        if staff is not None:
-            measure_accidentals(system, staff)
-    if touched:
-        name_everything(document)
-    return document
+    system = _system_of(document, system_index)
+    if system is None:
+        return None, None, None, None
+    staff = _staff_of(system, staff_index)
+    event = next((e for e in system["events"] if e["index"] == event_index), None)
+    if staff is None or event is None:
+        return system, staff, event, None
+    return system, staff, event, next(
+        (p for p in event["parts"] if p["staff"] == staff_index), None)
+
+
+def _at_index(part, position):
+    if part is None or not isinstance(position, int):
+        return None
+    return part["notes"][position] if 0 <= position < len(part["notes"]) else None
+
+
+def _at_height(part, staff, y):
+    """The notehead a stored correction points at, found by where it sits.
+
+    By height and not by index, so inserting or removing a notehead does not silently
+    re-point every correction after it in the chord.  The nearest within the slack
+    wins, and two noteheads are never that close: a staff position is four times it.
+    """
+    if part is None:
+        return None
+    slack = _anchor_slack(staff)
+    best = None
+    for note in part["notes"]:
+        gap = abs(note["y"] - y)
+        if gap <= slack and (best is None or gap < best[0]):
+            best = (gap, note)
+    return best[1] if best else None
+
+
+def _forget(document, system_index, event_index, staff_index, staff, y):
+    """Drop any stored correction on the notehead at *y*.  One per notehead."""
+    slack = _anchor_slack(staff)
+    document["edits"] = [
+        edit for edit in document["edits"]
+        if not (edit["system"] == system_index and edit["event"] == event_index
+                and edit["staff"] == staff_index and abs(edit["y"] - y) <= slack)]
+
+
+def _sort_notes(part):
+    """Low to high, the order every reader of a chord expects and the overlay assumes."""
+    part["notes"].sort(key=lambda note: (note["midi"], -note["y"]))
+
+
+def _settle(document, system, staff):
+    measure_accidentals(system, staff)
+    for _event, part in staff_notes(system, staff["index"]):
+        _sort_notes(part)
+    name_everything(document)
+    return True
+
+
+# ---------------------------------------------------------------- the corrections
 
 
 def set_accidental(document, system_index, event_index, staff_index, position, value):
     """Write an accidental on one notehead by hand, or clear it with None.
 
-    Returns True when the document changed.  The accidental then carries to the rest of
-    its measure exactly as a printed one would, because the same rule resolves both.
+    Returns True when the document changed.  Asking for the accidental the note already
+    sounds is not a change: the buttons show which one is in force, so clicking that one
+    is a reader agreeing with the page, and recording a correction for it would fill the
+    log with edits that correct nothing.
     """
     if value is not None and value not in EDITABLE_ACCIDENTALS:
         raise ValueError("accidental must be one of %r or None, got %r"
                          % (EDITABLE_ACCIDENTALS, value))
-    edit = {"kind": "accidental", "system": system_index, "event": event_index,
-            "staff": staff_index, "note": position, "value": value}
-    system = next((s for s in document["systems"] if s["index"] == system_index), None)
-    if system is None:
-        return False
-    probe = dict(edit)
-    probe.pop("y", None)
-    system, note = _note_at(document, probe)
+    system, staff, _event, part = _locate(document, system_index, event_index,
+                                          staff_index)
+    note = _at_index(part, position)
     if note is None:
         return False
-    edit["y"] = note["y"]
-
-    # One edit per notehead: writing a sharp and then a flat on the same note is a
-    # correction of the correction, not two corrections, and a log that grows without
-    # bound would replay the earlier answer over the later one.
-    document["edits"] = [e for e in document["edits"]
-                         if not (e.get("kind") == "accidental"
-                                 and (e.get("system"), e.get("event"), e.get("staff"),
-                                      e.get("note"))
-                                 == (system_index, event_index, staff_index, position))]
-    if value is not None:
-        document["edits"].append(edit)
-    note["accidental"] = value
-    staff = _staff_of(system, staff_index)
-    if staff is None:
+    if value is None:
+        if note["accidental"] is None:
+            return False
+    elif ACCIDENTAL_ALTER[value] == note["alter"]:
         return False
-    measure_accidentals(system, staff)
-    name_everything(document)
-    return True
+
+    y = note["y"]
+    _forget(document, system_index, event_index, staff_index, staff, y)
+    if value is not None:
+        document["edits"].append({
+            "kind": "accidental", "system": system_index, "event": event_index,
+            "staff": staff_index, "value": value, "y": y,
+        })
+    note["accidental"] = value
+    return _settle(document, system, staff)
+
+
+def set_pitch(document, system_index, event_index, staff_index, position, step):
+    """Move one notehead to another staff position.
+
+    The pitch follows the position rather than being stored beside it, so this writes
+    the y and lets the same arithmetic as everything else name it.  That is also what
+    makes it outlive a key pick with nothing replayed: re-deriving reads the y.
+    """
+    system, staff, _event, part = _locate(document, system_index, event_index,
+                                          staff_index)
+    note = _at_index(part, position)
+    if note is None or not isinstance(step, int):
+        return False
+    lowest = pitches.CLEF_BOTTOM_LINE_STEP[staff["clef"]] - PITCH_MENU_REACH
+    if not lowest <= step < lowest + 9 + 2 * PITCH_MENU_REACH:
+        return False
+    y = pitches.step_to_y(step, staff["lines"], staff["clef"])
+    if abs(y - note["y"]) <= _anchor_slack(staff):
+        return False                      # already on that position
+
+    # The correction on this notehead, if it has one, moves with it: it is the same
+    # notehead, and its anchor is where the notehead is.
+    carried = next((edit for edit in document["edits"]
+                    if edit["system"] == system_index and edit["event"] == event_index
+                    and edit["staff"] == staff_index
+                    and abs(edit["y"] - note["y"]) <= _anchor_slack(staff)), None)
+    note["y"] = float(y)
+    note["ledger"] = pitches.ledger_count(step, staff["clef"])
+    note["step_err_px"] = 0.0
+    note["changed"] = True
+    if carried is not None:
+        carried["y"] = float(y)
+    return _settle(document, system, staff)
+
+
+def delete_note(document, system_index, event_index, staff_index, position):
+    """Take one notehead out of a chord.
+
+    A hand left with no noteheads is not a hand that plays a rest, it is a hand the
+    reader says has nothing here, so the part goes; an event with no parts at all is
+    the whole chord gone, and that is delete_event's job including the renumbering.
+    """
+    system, staff, event, part = _locate(document, system_index, event_index,
+                                         staff_index)
+    note = _at_index(part, position)
+    if note is None:
+        return False
+    _forget(document, system_index, event_index, staff_index, staff, note["y"])
+    part["notes"].pop(position)
+    if not part["notes"]:
+        event["parts"] = [other for other in event["parts"] if other is not part]
+    if not event["parts"]:
+        return delete_event(document, system_index, event_index)
+    return _settle(document, system, staff)
+
+
+def add_note(document, system_index, event_index, staff_index, step):
+    """Put a notehead the reader missed into a chord.
+
+    Also the way a whole hand comes back: a staff that plays nothing in this event has
+    no part to add to, so one is made.  The new notehead is given the size of the ones
+    already on the staff, so the overlay marker matches its neighbours rather than
+    announcing itself.
+    """
+    system, staff, event, part = _locate(document, system_index, event_index,
+                                         staff_index)
+    if system is None or staff is None or event is None or not isinstance(step, int):
+        return False
+    lowest = pitches.CLEF_BOTTOM_LINE_STEP[staff["clef"]] - PITCH_MENU_REACH
+    if not lowest <= step < lowest + 9 + 2 * PITCH_MENU_REACH:
+        return False
+    y = pitches.step_to_y(step, staff["lines"], staff["clef"])
+    if part is not None and _at_height(part, staff, y) is not None:
+        return False                      # that position is already sounding
+
+    sizes = [(other["w"], other["h"], other["hollow"])
+             for _e, other_part in staff_notes(system, staff_index)
+             for other in other_part["notes"] if other["w"] and other["h"]]
+    width, height, hollow = sizes[0] if sizes else (staff["unit"] * 1.2,
+                                                    staff["unit"] * 0.8, False)
+    note = pitches.make_note(
+        step, 0, event["x"], y, w=width, h=height, hollow=hollow,
+        ledger=pitches.ledger_count(step, staff["clef"]),
+        confidence=1.0, changed=True)
+    if part is None:
+        part = {"staff": staff_index, "hand": staff["hand"],
+                "duration_hint": "quarter-or-shorter", "dotted": False,
+                "notes": [], "chord": None}
+        event["parts"].append(part)
+        event["parts"].sort(key=lambda entry: entry["staff"])
+    part["notes"].append(note)
+    return _settle(document, system, staff)
 
 
 def delete_event(document, system_index, event_index):
@@ -329,28 +475,57 @@ def delete_event(document, system_index, event_index):
 
     The events left behind are renumbered, because the schema requires an event's
     index to be its position and everything that merges into a reading matches on it.
-    Stored edits are moved along with them, and any edit on the deleted chord goes
-    with the chord.
+    Stored corrections are moved along with them, and any correction on the deleted
+    chord goes with the chord.
     """
-    system = next((s for s in document["systems"] if s["index"] == system_index), None)
+    system = _system_of(document, system_index)
     if system is None:
         return False
-    if not any(e["index"] == event_index for e in system["events"]):
+    if not any(event["index"] == event_index for event in system["events"]):
         return False
-    system["events"] = [e for e in system["events"] if e["index"] != event_index]
+    system["events"] = [event for event in system["events"]
+                        if event["index"] != event_index]
     for position, event in enumerate(system["events"]):
         event["index"] = position
 
     moved = []
     for edit in document["edits"]:
-        if edit.get("system") != system_index or not isinstance(edit.get("event"), int):
+        if edit["system"] != system_index:
             moved.append(edit)
+        elif edit["event"] == event_index:
             continue
-        if edit["event"] == event_index:
-            continue
-        if edit["event"] > event_index:
-            edit["event"] -= 1
-        moved.append(edit)
+        else:
+            if edit["event"] > event_index:
+                edit["event"] -= 1
+            moved.append(edit)
     document["edits"] = moved
     name_everything(document)
     return True
+
+
+def apply_edits(document):
+    """Re-apply every stored accidental, then re-spell and re-name.
+
+    Called after anything that re-derives a pitch from the key or from the vision pass,
+    both of which read a notehead's accidental and would otherwise quietly undo a
+    person's correction.  Corrections that no longer point at a notehead are dropped
+    rather than kept as dead weight, and never moved onto whatever is nearest.
+    """
+    kept, touched = [], []
+    for edit in document["edits"]:
+        system, staff, _event, part = _locate(
+            document, edit["system"], edit["event"], edit["staff"])
+        if staff is None:
+            continue
+        note = _at_height(part, staff, edit["y"])
+        if note is None:
+            continue
+        note["accidental"] = edit["value"]
+        kept.append(edit)
+        if (system["index"], staff["index"]) not in touched:
+            touched.append((system["index"], staff["index"]))
+    document["edits"] = kept
+    for system_index, staff_index in touched:
+        system = _system_of(document, system_index)
+        _settle(document, system, _staff_of(system, staff_index))
+    return document

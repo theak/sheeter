@@ -8,7 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, redirect, request, response, static_file, template
 
-from sheeter import geometry, keysig, pipeline, store, verify
+from sheeter import geometry, keysig, pipeline, pitches, store, verify
 
 app = Bottle()
 
@@ -178,7 +178,10 @@ def show(analysis_id):
                     stale=not _current(document),
                     engine_version=geometry.GEOMETRY_VERSION,
                     keysig=keysig, key_fifths=keysig.current(document),
-                    key_picked=document["key_override"] is not None)
+                    key_picked=document["key_override"] is not None,
+                    # The fix panels need the pitch menu and a notehead's staff
+                    # position, both of which are arithmetic the modules already do.
+                    pipeline=pipeline, pitches=pitches)
 
 
 @app.route("/a/<analysis_id>/analysis.json")
@@ -298,63 +301,104 @@ def set_note_accidental(analysis_id):
     is written in front of it, so this is arithmetic on the stored reading.  The
     accidental then carries to the rest of its measure the way a printed one does.
     """
-    document = _load(analysis_id)
-    if document is None:
-        return _render_index("That analysis is no longer here.", 404)
-    target = _edit_target(document)
-    if target is None:
-        return redirect(_back_to(analysis_id))
-    wanted = (request.forms.get("value") or "").strip()
-    value = None if wanted in ("", "clear") else wanted
-    if value is not None and value not in pipeline.EDITABLE_ACCIDENTALS:
-        # An accidental nobody could have clicked is a broken form, not an instruction.
-        return redirect(_back_to(analysis_id))
-    try:
-        changed = pipeline.set_accidental(document, *target, value=value)
-    except ValueError:
-        return redirect(_back_to(analysis_id))
-    if changed:
-        _save_edited(analysis_id, document)
-    return redirect(_back_to(analysis_id))
+    def edit(document, target):
+        wanted = (request.forms.get("value") or "").strip()
+        value = None if wanted in ("", "clear") else wanted
+        if value is not None and value not in pipeline.EDITABLE_ACCIDENTALS:
+            # An accidental nobody could have clicked is a broken form, not an
+            # instruction.
+            return False
+        return pipeline.set_accidental(document, *target, value=value)
+    return _edit(analysis_id, edit, NOTE_FIELDS)
+
+
+@app.route("/a/<analysis_id>/note/pitch", method="POST")
+def set_note_pitch(analysis_id):
+    """Move one notehead to the staff position the reader picked."""
+    def edit(document, target):
+        return pipeline.set_pitch(document, *target, step=_step_form())
+    return _edit(analysis_id, edit, NOTE_FIELDS)
+
+
+@app.route("/a/<analysis_id>/note/delete", method="POST")
+def delete_note(analysis_id):
+    """Take one notehead out of a chord, leaving the rest of it alone."""
+    return _edit(analysis_id, lambda document, target:
+                 pipeline.delete_note(document, *target), NOTE_FIELDS)
+
+
+@app.route("/a/<analysis_id>/note/add", method="POST")
+def add_note(analysis_id):
+    """Put a notehead the reader missed into a chord, or a hand it missed entirely."""
+    return _edit(analysis_id, lambda document, target:
+                 pipeline.add_note(document, *target, step=_step_form()),
+                 STAFF_FIELDS)
 
 
 @app.route("/a/<analysis_id>/chord/delete", method="POST")
 def delete_chord(analysis_id):
     """Drop a chord the reader can see is not on the page."""
+    return _edit(analysis_id, lambda document, target:
+                 pipeline.delete_event(document, *target), EVENT_FIELDS)
+
+
+#: What each correction form names.  Deleting a whole chord has no staff to name and
+#: must not be made to invent one: a form asked for a field it has no business carrying
+#: would look like a stale page and be redirected away unchanged.
+NOTE_FIELDS = ("system", "event", "staff", "note")
+STAFF_FIELDS = ("system", "event", "staff")
+EVENT_FIELDS = ("system", "event")
+
+
+def _step_form():
+    """The diatonic step a pitch menu posted, or None."""
+    try:
+        return int(request.forms.get("step"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _edit(analysis_id, change, fields):
+    """The shape every hand correction shares: locate, change, write back, come back.
+
+    *change* is handed the document and the indices the form named and returns whether
+    anything moved.  A form naming something that is not there redirects unchanged
+    rather than erroring: it is a stale page, not a fault, and the reading it lands on
+    will show why.
+    """
     document = _load(analysis_id)
     if document is None:
         return _render_index("That analysis is no longer here.", 404)
-    try:
-        system_index = int(request.forms.get("system"))
-        event_index = int(request.forms.get("event"))
-    except (TypeError, ValueError):
+    target = _edit_target(fields)
+    if target is None:
         return redirect(_back_to(analysis_id))
-    if pipeline.delete_event(document, system_index, event_index):
-        _save_edited(analysis_id, document)
+    try:
+        if change(document, target):
+            _save_edited(analysis_id, document)
+    except ValueError:
+        pass
     return redirect(_back_to(analysis_id))
 
 
-def _edit_target(document):
-    """The (system, event, staff, note) a note form points at, or None."""
+def _edit_target(fields):
+    """The indices a correction form names, or None if they are not all whole."""
     try:
-        indices = tuple(int(request.forms.get(field))
-                        for field in ("system", "event", "staff", "note"))
+        indices = tuple(int(request.forms.get(field)) for field in fields)
     except (TypeError, ValueError):
         return None
     return indices if all(index >= 0 for index in indices) else None
 
 
 def _back_to(analysis_id):
-    """Where an edit returns to: the row it was made on, so the page does not jump.
+    """Where a correction returns to: the step it was made on, still selected.
 
-    The reading table is long and the edit forms are in it, so a bare redirect to the
-    top of the page loses the reader's place after every button.  The row ids are
-    already in the template for the overlay to scroll to.
+    The fix panel belongs to one step and the overlay reads the fragment on load, so
+    coming back to #step-N keeps the reader exactly where they were instead of at the
+    top of the page with nothing selected.
     """
-    system = (request.forms.get("system") or "").strip()
-    event = (request.forms.get("event") or "").strip()
-    if system.isdigit() and event.isdigit():
-        return "/a/%s#row-%s-%s" % (analysis_id, system, event)
+    step = (request.forms.get("step_number") or "").strip()
+    if step.isdigit():
+        return "/a/%s#step-%s" % (analysis_id, step)
     return "/a/%s" % analysis_id
 
 

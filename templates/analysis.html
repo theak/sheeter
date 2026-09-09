@@ -6,19 +6,14 @@ warnings = doc["warnings"] or []
 analysis_id = doc["id"]
 
 HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
-HAND_SHORT = {"right": "R", "left": "L"}
-# Which noteheads carry an accidental somebody wrote by hand, so the row can say so.
-# The note itself cannot tell: a hand written sharp and a printed one are the same
-# field, which is the point of applying them the same way.
-by_hand = set()
-for edit in doc["edits"]:
-    if edit["kind"] == "accidental":
-        by_hand.add((edit["system"], edit["event"], edit["staff"], edit["note"]))
-    end
-end
-ACCIDENTAL_GLYPH = {"sharp": "\u266f", "flat": "\u266d", "natural": "\u266e"}
+ACCIDENTAL_BUTTONS = (("sharp", "\u266f"), ("flat", "\u266d"), ("natural", "\u266e"))
+#: alter to the button that is in force.  The state a reader wants marked is what the
+#: note sounds now, not only what is printed in front of it: a note sharpened by the key
+#: signature shows sharp, because that is what it is.
+ALTER_BUTTON = {-1: "flat", 0: "natural", 1: "sharp"}
+
 staff_rows = []
-event_rows = []
+fix_steps = []
 for system in doc["systems"]:
     by_index = {}
     for staff in system["staves"]:
@@ -33,52 +28,65 @@ for system in doc["systems"]:
             "cut_off": staff["cut_off"],
         })
     end
+    # One pitch menu per staff, not per notehead: the options are the same for every
+    # note on it, and a page of dense chords would otherwise build the list many times.
+    menus = {}
+    for staff in system["staves"]:
+        menus[staff["index"]] = pipeline.pitch_choices(staff)
+    end
     for event in system["events"]:
-        parts = []
-        for part in event["parts"]:
-            staff = by_index.get(part["staff"]) or {}
-            # "G♯ 4" not "G♯4", the same spacing overlay.js uses on the labels.
-            names = [re.sub(r"(\d+)$", r" \1", note["pretty"]) for note in part["notes"]]
-            names.reverse()
-            # High to low, like the names, but each keeping the position it has in the
-            # stored chord: that index is what the edit form posts back.
-            editable = []
-            for position in range(len(part["notes"]) - 1, -1, -1):
+        hands = []
+        for staff in system["staves"]:
+            part = None
+            for candidate in event["parts"]:
+                if candidate["staff"] == staff["index"]:
+                    part = candidate
+                end
+            end
+            slack = (staff["unit"] or 20.0) / 8.0
+            notes = []
+            for position in range(len(part["notes"]) if part else 0):
                 note = part["notes"][position]
-                editable.append({
+                corrected = False
+                for edit in doc["edits"]:
+                    if (edit["system"] == system["index"]
+                            and edit["event"] == event["index"]
+                            and edit["staff"] == staff["index"]
+                            and abs(edit["y"] - note["y"]) <= slack):
+                        corrected = True
+                    end
+                end
+                step, _err = pitches.y_to_step(note["y"], staff["lines"], staff["clef"])
+                notes.append({
                     "position": position,
+                    # "G# 4" not "G#4", the same spacing overlay.js uses on the labels.
                     "pretty": re.sub(r"(\d+)$", r" \1", note["pretty"]),
-                    "accidental": note["accidental"] or "",
-                    "by_hand": (system["index"], event["index"], part["staff"],
-                                position) in by_hand,
+                    "step": step,
+                    "current": ALTER_BUTTON.get(note["alter"], ""),
+                    "by_hand": corrected,
                 })
             end
-            parts.append({
-                "staff": part["staff"],
-                "notes": editable,
-                "hand": HAND_LABEL.get(part["hand"]) or (
-                    str(staff.get("clef", "")).capitalize() + " staff").strip(),
-                # No badge letter for a lone staff: the hand column already says
-                # "Treble staff", and "Treble Treble staff" reads badly.
-                "short": HAND_SHORT.get(part["hand"]) or "",
-                "tone": "l" if (part["hand"] == "left" or
-                                staff.get("clef") == "bass") else "r",
-                "names": ", ".join(names),
-                "chord": (part["chord"] or {}).get("symbol") or "",
+            notes.reverse()          # high to low, the way a chord is read off the page
+            hands.append({
+                "staff": staff["index"],
+                "label": HAND_LABEL.get(staff["hand"]) or (
+                    str(staff["clef"]).capitalize() + " staff"),
+                "notes": notes,
+                "choices": menus[staff["index"]],
+                # The middle of the staff, which is the least surprising place for a
+                # notehead somebody is adding from scratch to start.
+                "add_default": pitches.CLEF_BOTTOM_LINE_STEP[staff["clef"]] + 4,
             })
         end
         combined = event["combined"] or {}
-        event_rows.append({
+        fix_steps.append({
+            "number": len(fix_steps) + 1,
             "system": system["index"],
-            "index": event["index"],
-            "step": len(event_rows) + 1,
+            "event": event["index"],
             "symbol": combined.get("symbol") or "",
             "common_name": combined.get("common_name") or "",
-            "low_confidence": (event["confidence"] or 0) < 0.7,
-            "by_hand": any(note["by_hand"] for part in parts
-                           for note in part["notes"]),
             "note": event["note"] or "",
-            "parts": parts,
+            "hands": hands,
         })
     end
 end
@@ -109,7 +117,7 @@ safe_json = analysis_json.replace("<", "\\u003C")
   <header class="masthead">
     <h1 id="doc-title">{{doc['title']}}</h1>
     <p class="muted">{{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
-    {{len(event_rows)}} step{{'' if len(event_rows) == 1 else 's'}},
+    {{len(fix_steps)}} step{{'' if len(fix_steps) == 1 else 's'}},
     read from a {{image['width']}}&times;{{image['height']}} image.</p>
   </header>
 
@@ -262,94 +270,93 @@ safe_json = analysis_json.replace("<", "\\u003C")
   <p class="muted stage-hint js-only">Tap a numbered dot to read that step, or use Prev and Next
   and the arrow keys. Pinch or use + and &minus; to zoom; drag to move around; Fit puts it back.</p>
 
-  <section id="detail" class="detail" hidden></section>
-
-  <section class="reading">
-    <div class="reading-head">
-      <h2>The whole reading</h2>
-      <button type="button" id="copy-button" class="secondary outline js-only">Copy as text</button>
+  <!-- One fix panel per step, rendered by the server and all of them present.  overlay.js
+       hides every panel but the selected step's, so with scripting off they are all
+       simply there, each labelled, and correcting a reading still works: the same
+       direction of progressive enhancement the key picker takes. -->
+  <section id="fixes" class="fixes">
+    <!-- Copy as text lived in the header of the reading table this section replaced.  It
+         is not part of what was redundant with the labels, so it moves rather than goes. -->
+    <p class="fixes-head"><button type="button" id="copy-button"
+       class="secondary outline js-only">Copy as text</button></p>
+% if fix_steps:
+%   for fix in fix_steps:
+    <div class="fix-panel" id="fix-{{fix['number']}}" data-step="{{fix['number']}}">
+      <h2>Step {{fix['number']}} of {{len(fix_steps)}}<span class="fix-symbol">{{fix['symbol']}}</span></h2>
+%     if fix['common_name']:
+      <p class="common-name">{{fix['common_name']}}</p>
+%     end
+%     if fix['note']:
+      <p class="muted fix-model-note">{{fix['note']}}</p>
+%     end
+%     for hand in fix['hands']:
+      <h3 class="fix-hand">{{hand['label']}}</h3>
+%       if not hand['notes']:
+      <p class="muted">Nothing read on this staff here.</p>
+%       end
+%       for note in hand['notes']:
+      <!-- One form per notehead, not one per button: every control here names the same
+           notehead, so they share the hidden inputs and each button points itself at the
+           route it wants with formaction.  Five forms a note repeated the same four
+           indices five times over and put 36KB of it on a thirteen step page. -->
+      <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="note" value="{{note['position']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <span class="fix-pitch">
+          <label class="visually-hidden"
+                 for="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}">Which note {{note['pretty']}} is</label>
+          <select id="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}" name="step">
+%         for choice in hand['choices']:
+            <option value="{{choice['step']}}"{{!' selected' if choice['step'] == note['step'] else ''}}>{{choice['pretty']}}</option>
+%         end
+          </select>
+          <button type="submit" class="fix-go secondary outline"
+                  formaction="/a/{{analysis_id}}/note/pitch">Move</button>
+        </span>
+        <span class="fix-buttons" role="group">
+%       for kind, glyph in ACCIDENTAL_BUTTONS:
+          <button type="submit" name="value" value="{{kind}}" class="fix-acc"
+                  title="Make {{note['pretty']}} {{kind}}"
+                  {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
+%       end
+          <button type="submit" class="fix-acc fix-drop"
+                  formaction="/a/{{analysis_id}}/note/delete"
+                  title="Take {{note['pretty']}} out of this chord">&times;</button>
+%       if note['by_hand']:
+          <button type="submit" name="value" value="clear" class="fix-acc fix-clear"
+                  title="Undo the correction on {{note['pretty']}}">undo</button>
+%       end
+        </span>
+      </form>
+%       end
+      <form action="/a/{{analysis_id}}/note/add" method="post" class="fix-add">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <label for="a-{{fix['number']}}-{{hand['staff']}}">Add a note</label>
+        <select id="a-{{fix['number']}}-{{hand['staff']}}" name="step">
+%       for choice in hand['choices']:
+          <option value="{{choice['step']}}"{{!' selected' if choice['step'] == hand['add_default'] else ''}}>{{choice['pretty']}}</option>
+%       end
+        </select>
+        <button type="submit" class="secondary outline">Add</button>
+      </form>
+%     end
+      <form action="/a/{{analysis_id}}/chord/delete" method="post" class="fix-delete"
+            onsubmit="return confirm('Delete this whole chord from the reading?');">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <button type="submit" class="secondary outline">Delete this chord</button>
+      </form>
     </div>
-% if event_rows:
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>Step</th><th>Chord</th><th>Notes, high to low</th></tr>
-        </thead>
-        <tbody>
-%   for row in event_rows:
-          <tr id="row-{{row['system']}}-{{row['index']}}" class="{{'low' if row['low_confidence'] else ''}}">
-            <td>{{row['step']}}</td>
-            <td>
-              <strong>{{row['symbol'] or '-'}}</strong>
-%             if row['common_name']:
-              <br><small class="muted">{{row['common_name']}}</small>
-%             end
-%             if row['low_confidence']:
-              <br><small class="muted">unsure</small>
-%             end
-%             if row['by_hand']:
-              <br><small class="by-hand">corrected by hand</small>
-%             end
-            </td>
-            <td>
-%             for part in row['parts']:
-              <span class="hand-line">
-%               if part['short']:
-              <span class="key key-{{part['tone']}}">{{part['short']}}</span>
-%               end
-              {{part['hand']}}: {{part['names']}}</span>
-%             end
-%             if row['note']:
-              <span class="hand-line muted">{{row['note']}}</span>
-%             end
-            </td>
-          </tr>
-          <!-- Its own full width row rather than a fourth column: at 390px a column
-               of accidental buttons is pushed off the side of the table and has to be
-               scrolled to, and this app is pointed at a phone.  Collapsed, and every
-               control a submit button, so correcting a note is plain HTML like the key
-               picker and needs no scripting. -->
-          <tr class="fix-row">
-            <td colspan="3">
-              <details class="fix">
-                <summary>Fix step {{row['step']}}</summary>
-%             for part in row['parts']:
-                <p class="fix-hand">{{part['hand']}}</p>
-%               for note in part['notes']:
-                <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
-                  <input type="hidden" name="system" value="{{row['system']}}">
-                  <input type="hidden" name="event" value="{{row['index']}}">
-                  <input type="hidden" name="staff" value="{{part['staff']}}">
-                  <input type="hidden" name="note" value="{{note['position']}}">
-                  <span class="fix-name">{{note['pretty']}}</span>
-%                 for kind, glyph in (('sharp', ACCIDENTAL_GLYPH['sharp']), ('flat', ACCIDENTAL_GLYPH['flat']), ('natural', ACCIDENTAL_GLYPH['natural'])):
-                  <button type="submit" name="value" value="{{kind}}" class="fix-acc"
-                          title="Make {{note['pretty']}} {{kind}}"
-                          {{!'aria-current="true"' if note['accidental'] == kind else ''}}>{{glyph}}</button>
-%                 end
-%                 if note['by_hand']:
-                  <button type="submit" name="value" value="clear"
-                          class="fix-acc fix-clear" title="Undo this correction">undo</button>
-%                 end
-                </form>
-%               end
-%             end
-                <form action="/a/{{analysis_id}}/chord/delete" method="post"
-                      class="fix-delete"
-                      onsubmit="return confirm('Delete this whole chord from the reading?');">
-                  <input type="hidden" name="system" value="{{row['system']}}">
-                  <input type="hidden" name="event" value="{{row['index']}}">
-                  <button type="submit" class="secondary outline">Delete this chord</button>
-                </form>
-              </details>
-            </td>
-          </tr>
 %   end
-        </tbody>
-      </table>
-    </div>
 % else:
-    <p class="muted">No noteheads were found, so there is nothing to list.</p>
+    <p class="muted">No noteheads were found, so there is nothing to correct.</p>
 % end
   </section>
 

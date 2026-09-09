@@ -379,3 +379,175 @@ class TestApplyEdits:
         before = [_right(doc, i) for i in range(2)]
         pipeline.apply_edits(doc)
         assert [_right(doc, i) for i in range(2)] == before
+
+
+def _step(name):
+    return pitches.parse_name(name)[0]
+
+
+class TestSetPitch:
+    def test_a_notehead_read_a_space_off_can_be_moved(self):
+        doc = _editable()
+        assert _right(doc, 0) == ["E4", "G4", "B4"]
+        assert pipeline.set_pitch(doc, 0, 0, 0, 0, _step("F4")) is True
+        assert _right(doc, 0) == ["F4", "G4", "B4"]
+        schema.validate_analysis(doc)
+
+    def test_the_chord_stays_in_order(self):
+        doc = _editable()
+        pipeline.set_pitch(doc, 0, 0, 0, 0, _step("C5"))
+        assert _right(doc, 0) == ["G4", "B4", "C5"]
+
+    def test_the_move_is_a_staff_position_and_the_key_still_spells_it(self):
+        """Why a move needs nothing replayed: it writes the geometry, and every later
+        re-derivation reads the geometry.  It also means the key still applies to it."""
+        doc = _editable()
+        pipeline.set_pitch(doc, 0, 0, 0, 0, _step("F4"))
+        assert doc["edits"] == [], "not a correction that has to be replayed"
+        pipeline.set_key(doc, 1)
+        assert _right(doc, 0) == ["F#4", "G4", "B4"], "one sharp reaches the F"
+
+    def test_a_written_accidental_travels_with_the_notehead(self):
+        doc = _editable()
+        pipeline.set_accidental(doc, 0, 0, 0, 0, "sharp")
+        assert _right(doc, 0) == ["E#4", "G4", "B4"]
+        pipeline.set_pitch(doc, 0, 0, 0, 0, _step("F4"))
+        assert _right(doc, 0) == ["F#4", "G4", "B4"]
+        assert len(doc["edits"]) == 1, "still one correction, not two"
+        pipeline.apply_edits(doc)
+        assert _right(doc, 0) == ["F#4", "G4", "B4"], "and it still finds its notehead"
+
+    def test_the_carry_follows_the_note_to_its_new_position(self):
+        doc = _editable(barlines=[600], extra=[(500, ["F4"])])
+        pipeline.set_accidental(doc, 0, 0, 0, 0, "sharp")
+        assert _right(doc, 2) == ["F4"], "nothing to carry to yet"
+        pipeline.set_pitch(doc, 0, 0, 0, 0, _step("F4"))
+        assert _right(doc, 2) == ["F#4"], "now the later F is in its shadow"
+
+    def test_moving_onto_the_position_it_is_already_on_is_not_a_change(self):
+        doc = _editable()
+        assert pipeline.set_pitch(doc, 0, 0, 0, 0, _step("E4")) is False
+
+    @pytest.mark.parametrize("step", [999, -999, None, "F4", 4.5])
+    def test_a_position_off_the_menu_is_refused(self, step):
+        doc = _editable()
+        assert pipeline.set_pitch(doc, 0, 0, 0, 0, step) is False
+        assert _right(doc, 0) == ["E4", "G4", "B4"]
+
+
+class TestDeleteNote:
+    def test_one_note_of_a_chord_can_go(self):
+        doc = _editable()
+        assert pipeline.delete_note(doc, 0, 0, 0, 1) is True
+        assert _right(doc, 0) == ["E4", "B4"]
+        schema.validate_analysis(doc)
+
+    def test_the_chord_is_named_again_without_it(self):
+        doc = _editable()
+        before = doc["systems"][0]["events"][0]["combined"]["symbol"]
+        pipeline.delete_note(doc, 0, 0, 0, 1)
+        assert doc["systems"][0]["events"][0]["combined"]["symbol"] != before
+
+    def test_emptying_a_hand_takes_the_hand_and_leaves_the_chord(self):
+        doc = _editable()
+        event = doc["systems"][0]["events"][0]
+        assert [part["staff"] for part in event["parts"]] == [0, 1]
+        assert pipeline.delete_note(doc, 0, 0, 1, 0) is True     # the lone left hand
+        event = doc["systems"][0]["events"][0]
+        assert [part["staff"] for part in event["parts"]] == [0]
+        schema.validate_analysis(doc)
+
+    def test_emptying_every_hand_takes_the_chord(self):
+        """The schema will not hold an event with no parts, so the last note of the
+        last hand takes the whole chord with it, renumbering and all."""
+        doc = _editable()
+        pipeline.delete_note(doc, 0, 0, 1, 0)
+        for _ in range(3):
+            pipeline.delete_note(doc, 0, 0, 0, 0)
+        assert [event["index"] for event in doc["systems"][0]["events"]] == [0]
+        assert _right(doc, 0) == ["A4", "C5"], "the chord after it moved up"
+        schema.validate_analysis(doc)
+
+    def test_the_correction_on_a_deleted_note_goes_with_it(self):
+        doc = _editable()
+        pipeline.set_accidental(doc, 0, 0, 0, 0, "sharp")
+        pipeline.delete_note(doc, 0, 0, 0, 0)
+        assert doc["edits"] == []
+
+    def test_a_note_that_is_not_there_changes_nothing(self):
+        doc = _editable()
+        assert pipeline.delete_note(doc, 0, 0, 0, 9) is False
+        assert _right(doc, 0) == ["E4", "G4", "B4"]
+
+
+class TestAddNote:
+    def test_a_missed_note_can_be_added(self):
+        doc = _editable()
+        assert pipeline.add_note(doc, 0, 0, 0, _step("D5")) is True
+        assert _right(doc, 0) == ["E4", "G4", "B4", "D5"]
+        schema.validate_analysis(doc)
+
+    def test_the_key_spells_the_new_note(self):
+        doc = _editable()
+        pipeline.set_key(doc, -2)
+        pipeline.add_note(doc, 0, 0, 0, _step("B4"))
+        assert "Bb4" in _right(doc, 0), "two flats reach a note added under them"
+
+    def test_a_whole_missed_hand_comes_back(self):
+        """The case with no part to add to: the reader says this staff plays something
+        here and there is nothing to hang it on, so a part is made for it."""
+        doc = _editable()
+        pipeline.delete_note(doc, 0, 0, 1, 0)
+        event = doc["systems"][0]["events"][0]
+        assert [part["staff"] for part in event["parts"]] == [0]
+        assert pipeline.add_note(doc, 0, 0, 1, _step("C3")) is True
+        event = doc["systems"][0]["events"][0]
+        left = next(part for part in event["parts"] if part["staff"] == 1)
+        assert [note["name"] for note in left["notes"]] == ["C3"]
+        assert left["hand"] == "left", "and it is that staff's own hand"
+        schema.validate_analysis(doc)
+
+    def test_the_position_that_is_already_sounding_is_refused(self):
+        doc = _editable()
+        assert pipeline.add_note(doc, 0, 0, 0, _step("E4")) is False
+        assert _right(doc, 0) == ["E4", "G4", "B4"]
+
+    def test_an_added_note_takes_the_size_of_the_ones_beside_it(self):
+        doc = _editable()
+        pipeline.add_note(doc, 0, 0, 0, _step("D5"))
+        notes = next(part for part in doc["systems"][0]["events"][0]["parts"]
+                     if part["staff"] == 0)["notes"]
+        added = next(note for note in notes if note["name"] == "D5")
+        assert (added["w"], added["h"]) == (10.0, 8.0), "the fixture's own notehead size"
+        assert added["changed"] is True
+
+    @pytest.mark.parametrize("target", [(9, 0, 0), (0, 9, 0), (0, 0, 9)])
+    def test_a_target_that_is_not_there_changes_nothing(self, target):
+        doc = _editable()
+        assert pipeline.add_note(doc, *target, step=_step("D5")) is False
+
+
+class TestAnchorsSurviveStructuralChange:
+    """The reason a correction is anchored by height and not by its index in the chord.
+
+    Adding or removing a notehead renumbers the ones after it.  An anchor that counted
+    positions would come to mean a different note; one that remembers where the
+    notehead sits does not, and does not need a fix-up on every structural change.
+    """
+
+    def test_adding_a_lower_note_does_not_move_a_correction(self):
+        doc = _editable()
+        pipeline.set_accidental(doc, 0, 0, 0, 1, "sharp")     # the G
+        assert _right(doc, 0) == ["E4", "G#4", "B4"]
+        pipeline.add_note(doc, 0, 0, 0, _step("D4"))          # slots in below it
+        assert _right(doc, 0) == ["D4", "E4", "G#4", "B4"]
+        pipeline.apply_edits(doc)
+        assert _right(doc, 0) == ["D4", "E4", "G#4", "B4"], "still the G"
+
+    def test_removing_a_lower_note_does_not_move_a_correction(self):
+        doc = _editable()
+        pipeline.set_accidental(doc, 0, 0, 0, 2, "flat")      # the B
+        assert _right(doc, 0) == ["E4", "G4", "Bb4"]
+        pipeline.delete_note(doc, 0, 0, 0, 0)                 # take the E out
+        pipeline.apply_edits(doc)
+        assert _right(doc, 0) == ["G4", "Bb4"], "still the B"

@@ -264,11 +264,26 @@ than as a side effect. A note corrected by hand does carry, because that path re
 
 ### Fixing a note or a chord by hand
 
-Two things go wrong often enough to be worth correcting by eye rather than by re-reading the photo:
-the reader invents a chord that is not there, usually out of a barline or a slanted beam, and it
-misses an accidental that is fused with the notehead it belongs to. So every row of the reading
-table has a "Fix" panel, collapsed until it is wanted, holding a sharp, flat and natural button for
-each notehead and one button to delete the whole chord.
+Four things go wrong often enough to be worth correcting by eye rather than by re-reading the
+photo: the reader invents a chord that is not there, usually out of a barline or a slanted beam; it
+misses an accidental fused with the notehead it belongs to; it reads a notehead a space off; and it
+misses a notehead, or a whole hand, entirely. So selecting a step shows a fix panel under the
+photo, and the panel holds, for every notehead of that chord, a menu of the staff positions it
+could be on, a sharp, flat and natural button, and a cross to take it out of the chord; then an
+"add a note" menu for each hand, and one button to delete the whole chord.
+
+The accidental in force is the one marked, and that is the note's alteration rather than only what
+is printed in front of it: a note the key signature sharpens shows sharp, because that is what it
+sounds. Asking for the one already marked does nothing and records nothing, so agreeing with the
+page cannot leave a reading covered in corrections that correct nothing.
+
+The panel replaced two things that said what the labels on the photo already say: a step detail
+that read the selected chord back in prose, and a table of the whole reading underneath it. What
+went with them, and is worth knowing: the interval list from the bass up, the chord's spelled-out
+common name in the detail panel, the roman numeral, the duration hints, the low-confidence warning
+in words, and the Claude pass's per-event note. The common name and that note are now in the fix
+panel's own heading, since the fix panel is per-step and there was nowhere else for them; the rest
+is gone. "Copy as text" moved into the fix section rather than going with the table it sat on.
 
 An accidental written by hand behaves like a printed one: it holds at that staff position until the
 next barline, so correcting the first E flat of a bar corrects the later ones that lean on it and
@@ -279,16 +294,35 @@ into the other.
 
 Deleting a chord renumbers the ones after it, because the schema requires an event's index to be
 its position and the Claude pass matches its answer up by that index. Stored corrections move along
-with their chords, and a correction on the deleted chord goes with it.
+with their chords, and a correction on the deleted chord goes with it. Taking the last notehead out
+of a hand takes the hand, and the last hand takes the chord: an event with no parts is not a chord
+the schema will hold, and a hand with no noteheads is not a hand playing a rest.
 
-The corrections are kept on the reading as a small log, and re-applied after anything that
-re-derives a pitch: picking a key re-spells every notehead from the key, and the Claude pass
-re-reads every accidental off the image, so without the replay either one would quietly undo a
-person's answer. Re-analyze is the exception. A fresh reading of the photo renumbers everything and
+Only the accidentals are kept for replay, and the reason is worth stating because it decides the
+whole design. Moving, adding and removing a notehead all write the geometry, and everything that
+re-derives a pitch reads the geometry: `restate_staff` walks the noteheads that are there and works
+each one out from its own y. So those three outlive a key pick with nothing replayed. A written
+accidental is the one correction that does not, because re-deriving reads that field and resolves
+it against the key instead. So the log holds accidentals, and re-applies them after anything that
+re-derives a pitch: picking a key re-spells every notehead, and the Claude pass re-reads every
+accidental off the image, so without the replay either one would quietly undo a person's answer.
+Replaying a structural change onto a structure that already contains it is a question this never
+has to answer.
+
+A correction is anchored by the height it was made at and not by the notehead's place in the chord,
+so adding or removing a notehead cannot silently re-point the corrections after it. The slack is a
+quarter of a step, which scales with the photo: a fixed pixel count would drop every correction on
+a page the next reading nudged by a pixel, or slide one onto the staff position next door. Re-analyze is the exception. A fresh reading of the photo renumbers everything and
 may not contain the notehead at all, so there is no anchor left that means anything, and the
 corrections are cleared rather than moved onto whatever now sits at that index. The page says how
-many it holds and warns before the button. Every control is a submit button in its own form, so
-correcting a reading works with scripting off, like the key picker.
+many it holds and warns before the button.
+
+Every control is a submit button, so correcting a reading works with scripting off, like the key
+picker: a panel per step is rendered for every step and all of them are visible, and it is the
+overlay that hides all but the selected one. One form per notehead rather than one per button,
+each button pointing itself at its route with `formaction`, because five forms a notehead repeated
+the same four indices five times and put 36KB of it on a thirteen-step page. The whole page is
+164KB there, 9KB gzipped, being almost entirely repeated pitch menus.
 
 ### Hearing the chords
 

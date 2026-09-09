@@ -120,9 +120,10 @@ def _check_edits(edits):
             raise SchemaError("%s: expected an object" % where)
         if edit.get("kind") not in EDIT_KINDS:
             raise SchemaError("%s: unknown kind %r" % (where, edit.get("kind")))
-        _require(edit, ("kind", "system", "event", "staff", "note", "value", "y"),
-                 where)
-        for field in ("system", "event", "staff", "note"):
+        # No note index: a correction is anchored by the height it was made at, so
+        # that adding or removing a notehead cannot re-point the ones after it.
+        _require(edit, ("kind", "system", "event", "staff", "value", "y"), where)
+        for field in ("system", "event", "staff"):
             value = edit[field]
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 raise SchemaError("%s.%s: expected an index, got %r"

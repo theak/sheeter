@@ -447,12 +447,18 @@ class TestKeyPicker:
         assert keysig.svg(-2, False) in body.decode("utf-8")
 
 
+def step_of(name):
+    """The diatonic step a pitch name sits on, which is what the menus post."""
+    return pitches.parse_name(name)[0]
+
+
 class TestManualEditing:
     """Correcting a reading by hand, when the reader got a note or a chord wrong.
 
-    The two things worth fixing by eye: a chord the reader invented, and a notehead
-    whose accidental it missed.  Both are plain forms, like the key picker, because a
-    correction is exactly the sort of thing that should not need scripting to work.
+    Four things go wrong often enough to be worth fixing by eye rather than by
+    re-reading the photo: a missed accidental, a notehead read a space off, a note
+    the reader invented, and one it never saw.  Every control is a submit button in
+    its own form, so all of it works with scripting off, like the key picker.
     """
 
     @staticmethod
@@ -465,39 +471,51 @@ class TestManualEditing:
                 for note in part["notes"]]
 
     @staticmethod
-    def note_form(**over):
-        form = {"system": "0", "event": "0", "staff": "0", "note": "1"}
+    def form(**over):
+        form = {"system": "0", "event": "0", "staff": "0", "note": "1",
+                "step_number": "1"}
         form.update(over)
         return form
 
+    # ---------------------------------------------------------------- accidentals
+
     def test_sharpening_a_note_sticks(self, app, saved):
         assert self.names(saved) == ["C4", "E4", "G4"]
-        status, headers, _ = call(app, "POST", "/a/%s/note" % saved,
-                                  self.note_form(value="sharp"))
+        status, _headers, _ = call(app, "POST", "/a/%s/note" % saved,
+                                   self.form(value="sharp"))
         assert status.startswith("303")
         assert self.names(saved) == ["C4", "E#4", "G4"]
-        assert store.load(saved)["edits"] == [
-            {"kind": "accidental", "system": 0, "event": 0, "staff": 0, "note": 1,
-             "value": "sharp", "y": store.load(saved)["systems"][0]["events"][0]
-             ["parts"][0]["notes"][1]["y"]},
-        ]
+        edit = store.load(saved)["edits"][0]
+        assert edit["kind"] == "accidental" and edit["value"] == "sharp"
+        # Anchored by height, not by index, so adding or removing a notehead cannot
+        # re-point it at the one next door.
+        assert "note" not in edit and isinstance(edit["y"], float)
 
     def test_flat_and_natural_work_the_same_way(self, app, saved):
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="flat"))
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="flat"))
         assert self.names(saved) == ["C4", "Eb4", "G4"]
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="natural"))
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="natural"))
         assert self.names(saved) == ["C4", "E4", "G4"]
 
-    def test_it_comes_back_to_the_row_that_was_edited(self, app, saved):
-        """The reading table is long and the forms are in it, so a redirect to the top
-        of the page loses the reader's place after every button."""
+    def test_asking_for_the_accidental_it_already_sounds_records_nothing(
+            self, app, saved):
+        """The buttons show which one is in force, so clicking that one is a reader
+        agreeing with the page.  Recording it would fill the log with corrections that
+        correct nothing, and put "corrected by hand" on an untouched reading."""
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="natural"))
+        assert self.names(saved) == ["C4", "E4", "G4"]
+        assert store.load(saved)["edits"] == []
+
+    def test_it_comes_back_to_the_step_that_was_edited(self, app, saved):
+        """The fix panel belongs to one step, so a redirect to the top of the page with
+        nothing selected would lose the reader's place after every button."""
         _status, headers, _ = call(app, "POST", "/a/%s/note" % saved,
-                                   self.note_form(value="sharp"))
-        assert headers["Location"].endswith("/a/%s#row-0-0" % saved)
+                                   self.form(value="sharp"))
+        assert headers["Location"].endswith("/a/%s#step-1" % saved)
 
     def test_undoing_puts_the_reading_and_the_log_back(self, app, saved):
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="sharp"))
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="clear"))
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="sharp"))
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="clear"))
         assert self.names(saved) == ["C4", "E4", "G4"]
         assert store.load(saved)["edits"] == []
 
@@ -508,19 +526,101 @@ class TestManualEditing:
         {"value": "sharp", "note": "one"}, {"value": "sharp", "system": ""},
     ])
     def test_a_form_nobody_could_have_submitted_changes_nothing(self, app, saved, bad):
-        status, _headers, _ = call(app, "POST", "/a/%s/note" % saved,
-                                   self.note_form(**bad))
+        status, _headers, _ = call(app, "POST", "/a/%s/note" % saved, self.form(**bad))
         assert status.startswith("303")
         assert self.names(saved) == ["C4", "E4", "G4"]
         assert store.load(saved)["edits"] == []
 
+    # ---------------------------------------------------------------- the pitch itself
+
+    def test_a_notehead_read_a_space_off_can_be_moved(self, app, saved):
+        """E4 is four steps above the bottom line of a treble staff; F4 is the next one
+        up.  Nothing is measured again: the pitch follows the staff position."""
+        status, headers, _ = call(app, "POST", "/a/%s/note/pitch" % saved,
+                                  self.form(step=str(step_of("F4"))))
+        assert status.startswith("303")
+        assert headers["Location"].endswith("#step-1")
+        assert self.names(saved) == ["C4", "F4", "G4"]
+
+    def test_moving_a_note_keeps_the_chord_in_order(self, app, saved):
+        """Low to high is what the overlay and the interval list both assume."""
+        call(app, "POST", "/a/%s/note/pitch" % saved,
+             self.form(step=str(step_of("E5"))))
+        assert self.names(saved) == ["C4", "G4", "E5"]
+
+    def test_moving_a_note_outlives_a_key_pick_with_nothing_replayed(self, app, saved):
+        """The pitch is stored as a staff position, so re-deriving finds it again.  This
+        is why a move needs no entry in the correction log."""
+        call(app, "POST", "/a/%s/note/pitch" % saved,
+             self.form(step=str(step_of("B4"))))
+        assert store.load(saved)["edits"] == []
+        call(app, "POST", "/a/%s/key" % saved, {"fifths": "-1"})
+        # One flat reaches the B, which is the key doing its job on a notehead the
+        # reader moved: the move is a staff position, not a spelling.
+        assert self.names(saved) == ["C4", "G4", "Bb4"]
+
+    def test_a_correction_moves_with_the_notehead_it_was_made_on(self, app, saved):
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="sharp"))
+        call(app, "POST", "/a/%s/note/pitch" % saved,
+             self.form(step=str(step_of("F4"))))
+        assert self.names(saved) == ["C4", "F#4", "G4"], "the sharp followed it"
+        assert len(store.load(saved)["edits"]) == 1, "and is still one correction"
+
+    @pytest.mark.parametrize("bad", ["", "999", "-999", "up a bit", "4.5"])
+    def test_a_pitch_nobody_could_have_picked_changes_nothing(self, app, saved, bad):
+        call(app, "POST", "/a/%s/note/pitch" % saved, self.form(step=bad))
+        assert self.names(saved) == ["C4", "E4", "G4"]
+
+    # ---------------------------------------------------------------- adding, removing
+
+    def test_one_note_of_a_chord_can_go(self, app, saved):
+        status, _headers, _ = call(app, "POST", "/a/%s/note/delete" % saved, self.form())
+        assert status.startswith("303")
+        assert self.names(saved) == ["C4", "G4"]
+
+    def test_deleting_the_last_note_of_a_hand_takes_the_hand(self, app, saved):
+        for _ in range(3):
+            call(app, "POST", "/a/%s/note/delete" % saved, self.form(note="0"))
+        doc = store.load(saved)
+        assert self.names(saved) == []
+        # An event with no parts is the whole chord gone, and the schema will not hold
+        # an event with none, so it goes rather than sitting there empty.
+        assert doc["systems"][0]["events"] == []
+        schema.validate_analysis(doc)
+
+    def test_a_missed_note_can_be_added(self, app, saved):
+        status, headers, _ = call(app, "POST", "/a/%s/note/add" % saved,
+                                  {"system": "0", "event": "0", "staff": "0",
+                                   "step": str(step_of("B4")), "step_number": "1"})
+        assert status.startswith("303")
+        assert headers["Location"].endswith("#step-1")
+        assert self.names(saved) == ["C4", "E4", "G4", "B4"]
+
+    def test_adding_the_note_that_is_already_there_changes_nothing(self, app, saved):
+        call(app, "POST", "/a/%s/note/add" % saved,
+             {"system": "0", "event": "0", "staff": "0", "step": str(step_of("E4")),
+              "step_number": "1"})
+        assert self.names(saved) == ["C4", "E4", "G4"]
+
+    def test_an_added_note_is_marked_as_not_the_photo_s(self, app, saved):
+        """The overlay draws changed notes differently, and an added one is the clearest
+        case there is of a note the photo did not supply."""
+        call(app, "POST", "/a/%s/note/add" % saved,
+             {"system": "0", "event": "0", "staff": "0", "step": str(step_of("B4")),
+              "step_number": "1"})
+        notes = store.load(saved)["systems"][0]["events"][0]["parts"][0]["notes"]
+        added = next(note for note in notes if note["name"] == "B4")
+        assert added["changed"] is True
+        # This fixture's noteheads carry no measured size, so the added one falls back
+        # to the staff's own scale rather than to nothing, which the overlay cannot draw.
+        assert added["w"] and added["h"]
+
     def test_a_spurious_chord_can_be_deleted(self, app, saved):
         status, headers, _ = call(app, "POST", "/a/%s/chord/delete" % saved,
-                                  {"system": "0", "event": "0"})
+                                  {"system": "0", "event": "0", "step_number": "1"})
         assert status.startswith("303")
-        assert headers["Location"].endswith("/a/%s#row-0-0" % saved)
+        assert headers["Location"].endswith("#step-1")
         assert store.load(saved)["systems"][0]["events"] == []
-        assert self.names(saved) == []
 
     @pytest.mark.parametrize("bad", [
         {"system": "0", "event": "9"}, {"system": "9", "event": "0"},
@@ -530,10 +630,12 @@ class TestManualEditing:
         call(app, "POST", "/a/%s/chord/delete" % saved, bad)
         assert len(store.load(saved)["systems"][0]["events"]) == 1
 
+    # ---------------------------------------------------------------- persistence
+
     def test_an_edit_outlives_a_key_pick(self, app, saved):
         """A key change re-spells every notehead on the staff, so without the replay
         picking a key would quietly undo the correction made before it."""
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="flat"))
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="flat"))
         assert self.names(saved) == ["C4", "Eb4", "G4"]
         call(app, "POST", "/a/%s/key" % saved, {"fifths": "2"})
         # Two sharps reach the C, which is the key doing its job.  The E does not
@@ -542,36 +644,74 @@ class TestManualEditing:
         assert len(store.load(saved)["edits"]) == 1
 
     def test_re_analyzing_starts_from_the_photo_again(self, app, pickable):
-        """A fresh reading renumbers everything, so there is no honest anchor for an
-        edit made on the old one.  The page says so rather than pretending."""
-        call(app, "POST", "/a/%s/note" % pickable, self.note_form(value="sharp"))
+        """A fresh reading renumbers everything, so there is no honest anchor for a
+        correction made on the old one.  The page says so rather than pretending."""
+        call(app, "POST", "/a/%s/note" % pickable, self.form(value="sharp"))
         assert len(store.load(pickable)["edits"]) == 1
         call(app, "POST", "/a/%s/reanalyze" % pickable, {})
         assert store.load(pickable)["edits"] == []
 
-    def test_the_page_offers_the_controls_without_scripting(self, app, saved):
+    # ---------------------------------------------------------------- the page itself
+
+    def test_every_step_gets_a_panel_and_it_needs_no_scripting(self, app, saved):
         _status, _headers, body = call(app, "GET", "/a/%s" % saved)
         text = body.decode()
-        assert 'action="/a/%s/note"' % saved in text
-        assert 'action="/a/%s/chord/delete"' % saved in text
-        # Every accidental is its own submit button, so none of this needs javascript.
+        assert 'id="fix-1"' in text and 'data-step="1"' in text
+        for action in ("note", "note/pitch", "note/delete", "note/add",
+                       "chord/delete"):
+            assert 'action="/a/%s/%s"' % (saved, action) in text
         for kind in ("sharp", "flat", "natural"):
             assert 'name="value" value="%s"' % kind in text
-        assert 'class="js-only"' not in text.split('class="fix"')[1].split('</details>')[0]
+        # Rendered visible, not hidden: with no scripting every panel is simply there.
+        assert 'class="fix-panel"' in text
+        assert 'class="fix-panel" hidden' not in text
 
-    def test_the_page_marks_the_accidental_in_force(self, app, saved):
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="flat"))
-        _status, _headers, body = call(app, "GET", "/a/%s" % saved)
-        text = body.decode()
+    def test_the_two_sections_it_replaces_are_gone(self, app, saved):
+        """The step detail read back what the labels on the photo already say, and the
+        whole-reading table said it a third time."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert 'id="detail"' not in text
+        assert "The whole reading" not in text
+        assert "Every note, from the bass up" not in text
+
+    def test_the_page_marks_what_each_note_sounds_now(self, app, saved):
+        """Not only what is printed: a note sharpened by the key signature shows sharp,
+        because that is what it is."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
         marked = re.findall(r'name="value" value="(\w+)"[^>]*aria-current="true"', text)
-        assert marked == ["flat"], "one accidental is marked, and it is the one written"
+        assert marked == ["natural"] * 3, "C4 E4 G4 with no key are all natural"
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="flat"))
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        marked = re.findall(r'name="value" value="(\w+)"[^>]*aria-current="true"', text)
+        assert sorted(marked) == ["flat", "natural", "natural"]
         assert 'value="clear"' in text, "and there is a way back"
+
+    def test_the_pitch_menu_offers_the_staff_and_a_little_either_side(self, app, saved):
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        panel = text.split('id="fix-1"')[1]
+        assert 'name="step"' in panel
+        # An octave either side of the staff: E3 to F6 on a treble staff, which covers
+        # what a hand is written in without a menu nobody can scroll.
+        for name in ("E3", "C4", "E4", "F4", "A5", "F6"):
+            assert ">%s<" % name in panel, "%s is reachable from a treble staff" % name
+        assert ">C2<" not in panel, "and it stops somewhere"
+        selected = re.findall(r'<option value="(-?\d+)" selected>([A-G]\d)<', panel)
+        assert [name for _step, name in selected][:3] == ["G4", "E4", "C4"], \
+            "each menu starts on the note it is for, high to low"
+
+    def test_a_reading_with_nothing_left_in_it_says_so(self, app, saved):
+        """This fixture has one hand, so emptying it empties the reading.  A hand that
+        read nothing on a grand staff still gets its own Add a note, which needs two
+        staves to show and is covered in test_pipeline."""
+        for _ in range(3):
+            call(app, "POST", "/a/%s/note/delete" % saved, self.form(note="0"))
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert "there is nothing to correct" in text
+        assert 'class="fix-panel"' not in text
 
     def test_the_page_says_what_re_analyzing_would_cost(self, app, saved):
         """Losing a hand correction to a button press is worth a word of warning."""
-        _s, _h, before = call(app, "GET", "/a/%s" % saved)
-        assert "corrected by hand" not in before.decode()
-        call(app, "POST", "/a/%s/note" % saved, self.note_form(value="sharp"))
+        assert "clears them" not in call(app, "GET", "/a/%s" % saved)[2].decode()
+        call(app, "POST", "/a/%s/note" % saved, self.form(value="sharp"))
         text = call(app, "GET", "/a/%s" % saved)[2].decode()
-        assert "corrected by hand" in text, "the row says so"
-        assert "clears them" in text, "and the re-analyze button warns first"
+        assert "clears them" in text, "the re-analyze button warns first"

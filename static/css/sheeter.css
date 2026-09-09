@@ -398,45 +398,13 @@
 
 .stage-hint { font-size: 0.8rem; margin: 0.4rem 0 1rem; }
 
-/* ---------- detail ---------- */
-
-.detail {
-  border: 1px solid var(--pico-card-border-color);
-  border-left: 4px solid var(--pico-primary);
-  border-radius: var(--pico-border-radius);
-  background: var(--pico-card-background-color);
-  padding: 1rem;
-  margin-bottom: 2rem;
-}
-.detail h2 { font-size: 1rem; margin-bottom: 0.2rem; color: var(--pico-muted-color); }
-.detail .chord-line { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.1rem; }
-.detail .common-name { margin-bottom: 0.9rem; color: var(--pico-muted-color); }
-.detail .hand-block { margin-bottom: 0.7rem; }
-.detail .hand-block h3 { font-size: 0.9rem; margin-bottom: 0.15rem; }
-.detail .notes-line { font-size: 1.1rem; font-family: var(--pico-font-family-monospace); }
-.detail ul.intervals { list-style: none; padding: 0; margin: 0 0 0.8rem; }
-.detail ul.intervals li { padding: 0.1rem 0; }
-.detail ul.intervals b { font-family: var(--pico-font-family-monospace); }
-.detail .verifier-note {
-  border-left: 3px solid var(--pico-muted-border-color);
-  padding-left: 0.7rem;
-  margin-bottom: 0.8rem;
-}
-.detail .step-nav { display: flex; gap: 0.5rem; margin: 0; }
-.detail .step-nav button { width: auto; margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
-
 /* ---------- tables ---------- */
 
-.reading, .staves, .manage, .recent { margin-bottom: 2rem; }
-.reading-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
-.reading-head h2, .staves h2, .manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
-.reading-head button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; }
+.staves, .manage, .recent { margin-bottom: 2rem; }
+.staves h2, .manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
 .table-scroll { overflow-x: auto; }
 .table-scroll table { margin: 0; }
 .table-scroll td, .table-scroll th { vertical-align: top; }
-tr.low td { border-left: 3px dashed #d08600; }
-tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
-.hand-line { display: block; }
 
 .inline-form { display: inline-block; margin: 0; }
 .inline-form button { margin: 0; width: auto; }
@@ -522,38 +490,61 @@ tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
 
 /* ---------------------------------------------------------------- manual fixes */
 
-/* The fix column stays out of the way until it is opened: the reading is the point of
-   the table, and a row of accidental buttons per notehead would swamp it. */
-/* The panel's own row carries no borders of its own, so a chord and its fix panel
-   read as one block rather than as two rows that happen to be adjacent. */
-.fix-row > td { border-top: none; padding-top: 0; }
+/* One panel per step.  Rendered visible so the page works with scripting off; overlay.js
+   hides all but the selected step's, which is why nothing here hides them. */
+.fixes { margin: 1.2rem 0; }
+.fixes-head { margin: 0 0 0.6rem; }
 
-.fix > summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--pico-secondary);
-  white-space: nowrap;
+.fix-panel {
+  border: 1px solid var(--pico-muted-border-color);
+  border-left: 4px solid var(--pico-primary);
+  border-radius: 0.4rem;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 0.8rem;
 }
+.fix-panel h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.2rem;
+  font-size: 1rem;
+  color: var(--pico-muted-color);
+}
+.fix-symbol { font-size: 1.5rem; color: var(--pico-color); font-weight: 700; }
+.fix-panel .common-name { margin: 0 0 0.4rem; font-size: 0.85rem; }
+.fix-model-note { margin: 0 0 0.5rem; font-size: 0.8rem; }
 
 .fix-hand {
-  margin: 0.5rem 0 0.15rem;
+  margin: 0.7rem 0 0.3rem;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--pico-muted-color);
 }
 
+/* Wraps, so a narrow phone puts the accidentals under the pitch menu instead of
+   pushing them off the side, which is what a table column did. */
 .fix-note {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
-  margin: 0 0 0.2rem;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
 }
-
-.fix-name {
-  min-width: 3.2rem;
-  font-variant-numeric: tabular-nums;
+.fix-pitch, .fix-buttons { display: flex; align-items: center; gap: 0.25rem; }
+.fix-pitch select {
+  width: auto;
+  min-width: 5.5rem;
+  margin: 0;
+  padding: 0.35rem 1.6rem 0.35rem 0.5rem;
+  font-size: 0.9rem;
 }
+/* The no-script path for the pitch menu.  With scripting on, changing the menu submits
+   and this is redundant, so overlay.js could hide it -- it does not, because a visible
+   button is also the answer for anyone who changes a select with the keyboard. */
+.fix-go, .fix-add button { width: auto; margin: 0; padding: 0.35rem 0.6rem;
+  font-size: 0.8rem; }
 
 /* Big enough to hit with a thumb, which is what this app is for: 44px is the usual
    floor for a touch target and an accidental glyph is a small thing to aim at. */
@@ -576,20 +567,37 @@ tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
      reason. */
   color: var(--pico-primary);
 }
-
 .fix-acc[aria-current="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
   color: var(--pico-primary-inverse);
 }
-
 .fix-clear { font-size: 0.7rem; min-width: 3rem; }
+/* Removing a notehead is not one of the three things that spell it, so it does not
+   read as a fourth accidental. */
+.fix-drop { color: var(--pico-del-color, #b3261e); font-size: 1.3rem; }
 
-.fix-delete { margin: 0.6rem 0 0.2rem; }
-.fix-delete button { margin: 0; font-size: 0.8rem; padding: 0.4rem 0.7rem; }
+.fix-add {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.2rem;
+}
+.fix-add label { margin: 0; font-size: 0.8rem; color: var(--pico-muted-color); }
+.fix-add select { width: auto; min-width: 5.5rem; margin: 0;
+  padding: 0.35rem 1.6rem 0.35rem 0.5rem; font-size: 0.9rem; }
 
-/* A hand corrected note is worth pointing out: the reading no longer says only what
-   the photo said, and somebody coming back to it should be able to see that. */
-.by-hand { border-bottom: 2px dotted var(--pico-primary); }
+.fix-delete { margin: 0.8rem 0 0; }
+.fix-delete button { margin: 0; font-size: 0.8rem; padding: 0.4rem 0.7rem; width: auto; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 
 .edits-note { flex-basis: 100%; margin: 0.4rem 0 0; font-size: 0.8rem; }
