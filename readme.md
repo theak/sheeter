@@ -277,13 +277,27 @@ is printed in front of it: a note the key signature sharpens shows sharp, becaus
 sounds. Asking for the one already marked does nothing and records nothing, so agreeing with the
 page cannot leave a reading covered in corrections that correct nothing.
 
+"Delete this chord" sits at the top of the panel, being the one control that is about the whole
+step rather than about one notehead; last, on a panel long enough to scroll, it sat under the hand
+you had just finished correcting. "Move" applies a pitch picked from the menu and is hidden until
+the menu is actually changed, so it is not a button asking to be puzzled over on every notehead at
+once. The overlay hides it rather than revealing it, which is what keeps the menu submittable with
+no scripting.
+
 The panel replaced two things that said what the labels on the photo already say: a step detail
-that read the selected chord back in prose, and a table of the whole reading underneath it. What
-went with them, and is worth knowing: the interval list from the bass up, the chord's spelled-out
-common name in the detail panel, the roman numeral, the duration hints, the low-confidence warning
-in words, and the Claude pass's per-event note. The common name and that note are now in the fix
-panel's own heading, since the fix panel is per-step and there was nowhere else for them; the rest
-is gone. "Copy as text" moved into the fix section rather than going with the table it sat on.
+that read the selected chord back in prose, and a table of the whole reading underneath it. The
+staves table went too, since the key it listed is what the picker at the top of the page shows.
+What went with all three, and is worth knowing: the interval list from the bass up, the roman
+numeral, the duration hints, the low-confidence warning in words, and each staff's clef and
+cut-off flag. The chord's common name and the Claude pass's per-event note are kept in the fix
+panel's own heading, since it is per-step and there was nowhere else for them. "Copy as text" moved
+into the fix section rather than going with the table it sat on. A clipped staff still says so, in
+the warnings at the top, which is where it always was.
+
+The labels over the photo are always both notes and chords now. Choosing between them was three
+buttons for a decision nobody needs to make; the decision that matters on a dense page is how many
+labels at once, so "One step" and "All labels" moved into the bar above the photo where the labels
+they control are, and the bar below the photo is left to stepping.
 
 An accidental written by hand behaves like a printed one: it holds at that staff position until the
 next barline, so correcting the first E flat of a bar corrects the later ones that lean on it and

@@ -201,7 +201,7 @@
   font-size: 0.85rem;
 }
 .stage-controls input[type="range"] { width: 7rem; margin: 0; }
-.view-button[aria-pressed="true"], .mode-button[aria-pressed="true"],
+.mode-button[aria-pressed="true"],
 .sound-button[aria-pressed="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
@@ -209,7 +209,7 @@
 }
 /* Not var(--pico-color): Pico redefines that inside a button to the inverse, which is white,
    so the unpressed toggles rendered as empty boxes. */
-.view-button[aria-pressed="false"], .mode-button[aria-pressed="false"],
+.mode-button[aria-pressed="false"],
 .sound-button[aria-pressed="false"] {
   background: transparent;
   border-color: var(--pico-muted-border-color);
@@ -303,9 +303,6 @@
 .labels.mode-step .pill { display: none; }
 .labels.mode-step .pill.selected { display: flex; outline: none; }
 
-.labels.show-notes .pill.chord { display: none; }
-.labels.show-chords .pill.hand-r,
-.labels.show-chords .pill.hand-l { display: none; }
 
 .step-mark {
   position: absolute;
@@ -400,8 +397,8 @@
 
 /* ---------- tables ---------- */
 
-.staves, .manage, .recent { margin-bottom: 2rem; }
-.staves h2, .manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+.manage, .recent { margin-bottom: 2rem; }
+.manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
 .table-scroll { overflow-x: auto; }
 .table-scroll table { margin: 0; }
 .table-scroll td, .table-scroll th { vertical-align: top; }
@@ -545,6 +542,9 @@
    button is also the answer for anyone who changes a select with the keyboard. */
 .fix-go, .fix-add button { width: auto; margin: 0; padding: 0.35rem 0.6rem;
   font-size: 0.8rem; }
+/* Pico gives a button display:block, which beats the browser's own [hidden] rule, so
+   hiding Move needs saying here or the attribute does nothing. */
+.fix-go[hidden] { display: none; }
 
 /* Big enough to hit with a thumb, which is what this app is for: 44px is the usual
    floor for a touch target and an accidental glyph is a small thing to aim at. */

@@ -715,3 +715,39 @@ class TestManualEditing:
         call(app, "POST", "/a/%s/note" % saved, self.form(value="sharp"))
         text = call(app, "GET", "/a/%s" % saved)[2].decode()
         assert "clears them" in text, "the re-analyze button warns first"
+
+    def test_move_is_rendered_and_left_for_the_overlay_to_hide(self, app, saved):
+        """It applies a pitch picked from the menu, so it has nothing to do until the
+        menu changes and only asks to be puzzled over.  The overlay hides it, which is
+        the direction that fails safe: with no scripting the menu keeps its submit
+        button rather than becoming a control that cannot be submitted."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert 'class="fix-go secondary outline"' in text
+        assert 'class="fix-go secondary outline" hidden' not in text
+        assert 'formaction="/a/%s/note/pitch"' % saved in text
+
+    def test_the_staves_table_is_gone(self, app, saved):
+        """The key it listed is what the picker at the top of the page already shows."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert "<h2>Staves</h2>" not in text
+        assert 'class="staves"' not in text
+
+    def test_delete_this_chord_comes_before_the_noteheads(self, app, saved):
+        """It is the one control about the whole step rather than about a notehead, and
+        last on a panel long enough to scroll it sat under the hand just corrected."""
+        panel = call(app, "GET", "/a/%s" % saved)[2].decode().split('id="fix-1"')[1]
+        assert panel.index("chord/delete") < panel.index('name="step"'), \
+            "before the first notehead's pitch menu"
+        assert panel.index("chord/delete") < panel.index("fix-acc"), \
+            "and before the first accidental button"
+
+    def test_the_labels_are_always_both_and_the_mode_sits_where_they_did(
+            self, app, saved):
+        """Notes-only and chords-only were three buttons for a choice nobody needs to
+        make; the choice that matters on a dense page is how many labels at once."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert "view-button" not in text and 'data-view' not in text
+        # The mode buttons now sit in the bar above the photo, where the labels are.
+        above = text.split('id="viewport"')[0]
+        assert 'data-mode="step"' in above and 'data-mode="all"' in above
+        assert 'data-mode' not in text.split('id="step-bar"')[1]

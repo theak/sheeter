@@ -456,6 +456,26 @@
     }
   }
 
+  // Move applies a pitch the reader picked from the menu, so until they pick a different
+  // one there is nothing for it to apply and it only asks to be puzzled over.  Hidden
+  // here rather than shown here, so with no scripting it is simply always there and the
+  // menu still has its submit button: the direction that fails safe.
+  function armPitchMenus() {
+    var forms = document.querySelectorAll('.fix-panel .fix-pitch');
+    for (var i = 0; i < forms.length; i++) {
+      (function (group) {
+        var menu = group.querySelector('select');
+        var apply = group.querySelector('.fix-go');
+        if (!menu || !apply) { return; }
+        var was = menu.value;
+        apply.hidden = true;
+        menu.addEventListener('change', function () {
+          apply.hidden = menu.value === was;
+        });
+      }(forms[i]));
+    }
+  }
+
   // A correction posts back to #step-N so the reader lands on the step they were fixing
   // rather than at the top of the page with nothing selected.
   function stepFromHash() {
@@ -601,26 +621,6 @@
   });
 
   // ---------------------------------------------------------------- view controls
-
-  var VIEWS = ['notes', 'chords', 'both'];
-
-  function setView(view) {
-    if (VIEWS.indexOf(view) === -1) { view = 'both'; }
-    VIEWS.forEach(function (name) { labels.classList.toggle('show-' + name, name === view); });
-    var buttons = document.querySelectorAll('.view-button');
-    for (var i = 0; i < buttons.length; i++) {
-      buttons[i].setAttribute('aria-pressed', String(buttons[i].dataset.view === view));
-    }
-    store('view', view);
-    layoutLabels();
-  }
-
-  document.querySelectorAll('.view-button').forEach(function (button) {
-    button.addEventListener('click', function () {
-      setView(button.dataset.view);
-      reconsider();
-    });
-  });
 
   var sizeRange = document.getElementById('size-range');
   var MIN_LEGIBLE_LABEL = 8;
@@ -871,7 +871,6 @@
 
   var stored = recall('labelMode', '');
   applyModeClass('all');
-  setView(recall('view', 'both'));
   setSize(recall('labelSize', '12'));
   chosenByUser = (stored === 'step' || stored === 'all');
   setMode(chosenByUser ? stored : (wouldCollide() ? 'step' : 'all'), false);
@@ -882,7 +881,10 @@
   // made on is selected again and the reader carries on where they were; otherwise the
   // first step, which is what makes the panel a step's panel rather than a page's.
   var landed = stepFromHash();
-  if (panels.length) { select(landed || 1, landed > 0, false); }
+  if (panels.length) {
+    armPitchMenus();
+    select(landed || 1, landed > 0, false);
+  }
 
   var pending = 0;
   window.addEventListener('resize', function () {

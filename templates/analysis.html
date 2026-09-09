@@ -12,22 +12,8 @@ ACCIDENTAL_BUTTONS = (("sharp", "\u266f"), ("flat", "\u266d"), ("natural", "\u26
 #: signature shows sharp, because that is what it is.
 ALTER_BUTTON = {-1: "flat", 0: "natural", 1: "sharp"}
 
-staff_rows = []
 fix_steps = []
 for system in doc["systems"]:
-    by_index = {}
-    for staff in system["staves"]:
-        by_index[staff["index"]] = staff
-        fifths = staff["key_fifths"]
-        staff_rows.append({
-            "system": system["index"] + 1,
-            "hand": HAND_LABEL.get(staff["hand"]) or (staff["clef"].capitalize() + " staff"),
-            "clef": staff["clef"],
-            "key": keysig.label(fifths),
-            "accidentals": keysig.count(fifths),
-            "cut_off": staff["cut_off"],
-        })
-    end
     # One pitch menu per staff, not per notehead: the options are the same for every
     # note on it, and a page of dense chords would otherwise build the list many times.
     menus = {}
@@ -217,10 +203,9 @@ safe_json = analysis_json.replace("<", "\\u003C")
 % end
 
   <div class="stage-controls js-only" role="group" aria-label="Overlay controls">
-    <div class="control-group" role="group" aria-label="What to show">
-      <button type="button" class="view-button" data-view="notes">Notes</button>
-      <button type="button" class="view-button" data-view="chords">Chords</button>
-      <button type="button" class="view-button" data-view="both">Both</button>
+    <div class="control-group" role="group" aria-label="How many labels to show">
+      <button type="button" class="mode-button" data-mode="step">One step</button>
+      <button type="button" class="mode-button" data-mode="all">All labels</button>
     </div>
     <div class="control-group">
       <label for="size-range">Label size</label>
@@ -251,14 +236,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <!-- No role="group" here: Pico styles that as a button bar, which shrank this layer
            short of the photo and collapsed the step markers' tap area. Every button inside
            carries its own aria-label. -->
-      <div id="labels" class="labels show-both"></div>
+      <div id="labels" class="labels"></div>
     </div>
   </div>
   <div id="step-bar" class="step-bar">
-    <div class="control-group" role="group" aria-label="How many labels to show">
-      <button type="button" class="mode-button" data-mode="step">One step</button>
-      <button type="button" class="mode-button" data-mode="all">All labels</button>
-    </div>
     <div class="step-group">
       <button type="button" id="step-prev" class="secondary outline">&larr; Prev</button>
       <p id="step-status" class="step-status" role="status"></p>
@@ -289,6 +270,13 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %     if fix['note']:
       <p class="muted fix-model-note">{{fix['note']}}</p>
 %     end
+      <form action="/a/{{analysis_id}}/chord/delete" method="post" class="fix-delete"
+            onsubmit="return confirm('Delete this whole chord from the reading?');">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <button type="submit" class="secondary outline">Delete this chord</button>
+      </form>
 %     for hand in fix['hands']:
       <h3 class="fix-hand">{{hand['label']}}</h3>
 %       if not hand['notes']:
@@ -313,6 +301,8 @@ safe_json = analysis_json.replace("<", "\\u003C")
             <option value="{{choice['step']}}"{{!' selected' if choice['step'] == note['step'] else ''}}>{{choice['pretty']}}</option>
 %         end
           </select>
+          <!-- Rendered visible: overlay.js hides it until the menu is actually changed,
+               so with no scripting the menu keeps the submit button it needs. -->
           <button type="submit" class="fix-go secondary outline"
                   formaction="/a/{{analysis_id}}/note/pitch">Move</button>
         </span>
@@ -346,42 +336,12 @@ safe_json = analysis_json.replace("<", "\\u003C")
         <button type="submit" class="secondary outline">Add</button>
       </form>
 %     end
-      <form action="/a/{{analysis_id}}/chord/delete" method="post" class="fix-delete"
-            onsubmit="return confirm('Delete this whole chord from the reading?');">
-        <input type="hidden" name="system" value="{{fix['system']}}">
-        <input type="hidden" name="event" value="{{fix['event']}}">
-        <input type="hidden" name="step_number" value="{{fix['number']}}">
-        <button type="submit" class="secondary outline">Delete this chord</button>
-      </form>
     </div>
 %   end
 % else:
     <p class="muted">No noteheads were found, so there is nothing to correct.</p>
 % end
   </section>
-
-% if staff_rows:
-  <section class="staves">
-    <h2>Staves</h2>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>System</th><th>Hand</th><th>Clef</th><th>Key signature</th></tr>
-        </thead>
-        <tbody>
-%   for row in staff_rows:
-          <tr>
-            <td>{{row['system']}}</td>
-            <td>{{row['hand']}}{{' (cut off)' if row['cut_off'] else ''}}</td>
-            <td>{{row['clef']}}</td>
-            <td>{{row['key']}}<br><small class="muted">{{row['accidentals']}}</small></td>
-          </tr>
-%   end
-        </tbody>
-      </table>
-    </div>
-  </section>
-% end
 
   <section class="manage">
     <h2>This reading</h2>
