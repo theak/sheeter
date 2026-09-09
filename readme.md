@@ -254,10 +254,41 @@ and U+1D11E renders as a missing-glyph box on plenty of systems, which is worse 
 accidentals are drawn where they are printed, which is what the eye matches on.
 
 One limit worth knowing: re-spelling works from each notehead's stored position and its own written
-accidental, and barlines are not stored, so an accidental that carried across the rest of its bar
-is not carried again. A note that inherited a flat that way is spelled from the key instead. The
-Claude pass has always had the same gap. It bites only where a bar has one accidental and a later
-note on the same line leans on it, which is uncommon in the close voicings this is pointed at.
+accidental, so an accidental that carried across the rest of its bar is not carried again, and a
+note that inherited a flat that way is spelled from the key instead. The Claude pass has the same
+gap. It bites only where a bar has one accidental and a later note on the same line leans on it,
+which is uncommon in the close voicings this is pointed at. Barlines are now stored on the staff,
+so the missing piece is only that `restate_staff` does not read them: closing it properly means
+changing what every key pick and every Claude pass produces, which is worth doing on its own rather
+than as a side effect. A note corrected by hand does carry, because that path resolves the measure.
+
+### Fixing a note or a chord by hand
+
+Two things go wrong often enough to be worth correcting by eye rather than by re-reading the photo:
+the reader invents a chord that is not there, usually out of a barline or a slanted beam, and it
+misses an accidental that is fused with the notehead it belongs to. So every row of the reading
+table has a "Fix" panel, collapsed until it is wanted, holding a sharp, flat and natural button for
+each notehead and one button to delete the whole chord.
+
+An accidental written by hand behaves like a printed one: it holds at that staff position until the
+next barline, so correcting the first E flat of a bar corrects the later ones that lean on it and
+leaves the bar after it alone. That is the same rule `apply_alterations` applies when the page is
+first read, resolved against the barlines stored on the staff, which is why it needed them stored.
+A notehead that carries its own accidental is not overruled by the carry, and neither hand reaches
+into the other.
+
+Deleting a chord renumbers the ones after it, because the schema requires an event's index to be
+its position and the Claude pass matches its answer up by that index. Stored corrections move along
+with their chords, and a correction on the deleted chord goes with it.
+
+The corrections are kept on the reading as a small log, and re-applied after anything that
+re-derives a pitch: picking a key re-spells every notehead from the key, and the Claude pass
+re-reads every accidental off the image, so without the replay either one would quietly undo a
+person's answer. Re-analyze is the exception. A fresh reading of the photo renumbers everything and
+may not contain the notehead at all, so there is no anchor left that means anything, and the
+corrections are cleared rather than moved onto whatever now sits at that index. The page says how
+many it holds and warns before the button. Every control is a submit button in its own form, so
+correcting a reading works with scripting off, like the key picker.
 
 ### Hearing the chords
 

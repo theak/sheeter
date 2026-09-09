@@ -278,12 +278,99 @@ def set_key(analysis_id):
     try:
         fifths = int(wanted)
         pipeline.set_key(document, fifths)
+        # set_key goes through restate_staff, which resolves an accidental against the
+        # key alone and drops one carried from earlier in the measure.  Re-applying the
+        # edits afterwards puts the carry back.
+        pipeline.apply_edits(document)
     except ValueError:
         # A key nobody could have picked is a broken form, not something to act on.
         return redirect("/a/%s" % analysis_id)
     document["key_override"] = fifths
     store.save_doc(document)
     return redirect("/a/%s" % analysis_id)
+
+
+@app.route("/a/<analysis_id>/note", method="POST")
+def set_note_accidental(analysis_id):
+    """Sharp, flat or natural one notehead, by hand.
+
+    No image and nothing measured again: a notehead's y is a staff position whatever
+    is written in front of it, so this is arithmetic on the stored reading.  The
+    accidental then carries to the rest of its measure the way a printed one does.
+    """
+    document = _load(analysis_id)
+    if document is None:
+        return _render_index("That analysis is no longer here.", 404)
+    target = _edit_target(document)
+    if target is None:
+        return redirect(_back_to(analysis_id))
+    wanted = (request.forms.get("value") or "").strip()
+    value = None if wanted in ("", "clear") else wanted
+    if value is not None and value not in pipeline.EDITABLE_ACCIDENTALS:
+        # An accidental nobody could have clicked is a broken form, not an instruction.
+        return redirect(_back_to(analysis_id))
+    try:
+        changed = pipeline.set_accidental(document, *target, value=value)
+    except ValueError:
+        return redirect(_back_to(analysis_id))
+    if changed:
+        _save_edited(analysis_id, document)
+    return redirect(_back_to(analysis_id))
+
+
+@app.route("/a/<analysis_id>/chord/delete", method="POST")
+def delete_chord(analysis_id):
+    """Drop a chord the reader can see is not on the page."""
+    document = _load(analysis_id)
+    if document is None:
+        return _render_index("That analysis is no longer here.", 404)
+    try:
+        system_index = int(request.forms.get("system"))
+        event_index = int(request.forms.get("event"))
+    except (TypeError, ValueError):
+        return redirect(_back_to(analysis_id))
+    if pipeline.delete_event(document, system_index, event_index):
+        _save_edited(analysis_id, document)
+    return redirect(_back_to(analysis_id))
+
+
+def _edit_target(document):
+    """The (system, event, staff, note) a note form points at, or None."""
+    try:
+        indices = tuple(int(request.forms.get(field))
+                        for field in ("system", "event", "staff", "note"))
+    except (TypeError, ValueError):
+        return None
+    return indices if all(index >= 0 for index in indices) else None
+
+
+def _back_to(analysis_id):
+    """Where an edit returns to: the row it was made on, so the page does not jump.
+
+    The reading table is long and the edit forms are in it, so a bare redirect to the
+    top of the page loses the reader's place after every button.  The row ids are
+    already in the template for the overlay to scroll to.
+    """
+    system = (request.forms.get("system") or "").strip()
+    event = (request.forms.get("event") or "").strip()
+    if system.isdigit() and event.isdigit():
+        return "/a/%s#row-%s-%s" % (analysis_id, system, event)
+    return "/a/%s" % analysis_id
+
+
+def _save_edited(analysis_id, document):
+    """Write back an edited reading without clobbering a concurrent rename.
+
+    The same care reverify takes, for the same reason: the document was read before
+    the edit and only the reading and its edit log are this request's to write.
+    """
+    try:
+        latest = store.load(analysis_id)
+    except (KeyError, ValueError):
+        return
+    for field in ("systems", "edits", "warnings"):
+        latest[field] = document[field]
+    store.save_doc(latest)
 
 
 @app.route("/a/<analysis_id>/delete", method="POST")
@@ -305,6 +392,9 @@ def reverify(analysis_id):
     with open(store.path(analysis_id, "processed.png"), "rb") as handle:
         document = verify.verify_analysis(document, handle.read())
     pipeline.name_everything(document)
+    # Last word to the person who looked at the page.  The vision pass re-reads every
+    # accidental off the image, so without this it quietly undoes a hand correction.
+    pipeline.apply_edits(document)
     # A picked key needs no defending here: every path through verify_analysis either
     # hands back this document untouched or goes through apply_correction, which puts
     # the reader's key back itself.
@@ -316,7 +406,7 @@ def reverify(analysis_id):
         latest = store.load(analysis_id)
     except (KeyError, ValueError):
         return redirect("/")
-    for field in ("systems", "engine", "warnings"):
+    for field in ("systems", "engine", "warnings", "edits"):
         latest[field] = document[field]
     store.save_doc(latest)
     return redirect("/a/%s" % analysis_id)

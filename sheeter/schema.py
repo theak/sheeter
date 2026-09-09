@@ -31,12 +31,12 @@ PART_KEYS = ("staff", "hand", "duration_hint", "dotted", "notes", "chord")
 EVENT_KEYS = ("index", "x", "x_range", "confidence", "note", "parts", "combined")
 STAFF_KEYS = (
     "index", "hand", "clef", "clef_confidence", "lines", "unit", "x_range",
-    "key_fifths", "key_confidence", "cut_off",
+    "key_fifths", "key_confidence", "cut_off", "barlines",
 )
 SYSTEM_KEYS = ("index", "y_range", "x_range", "grand", "cut_off", "staves", "events")
 TOP_KEYS = (
     "schema_version", "id", "created_at", "title", "source", "image", "engine",
-    "warnings", "systems", "key_override",
+    "warnings", "systems", "key_override", "edits",
 )
 
 
@@ -62,22 +62,36 @@ def new_analysis(analysis_id, created_at, title, source, image):
         "warnings": [],
         "systems": [],
         "key_override": None,
+        "edits": [],
     }
 
 
 def normalize(doc):
     """Fill in fields added after this schema version was first written.
 
-    ``key_override`` arrived with the key signature picker, so every analysis stored
-    before it lacks the field.  Bumping SCHEMA_VERSION for that would have been worse
+    ``key_override`` arrived with the key signature picker, ``edits`` and a staff's
+    ``barlines`` with manual note editing, so every analysis stored before each of
+    those lacks the field.  Bumping SCHEMA_VERSION for that would have been worse
     than useless: store.load refuses a version it does not know, and store.listing
     swallows the error to keep one bad reading from emptying the gallery, so every
     older build would have silently lost every reading this one saved.  Filling the
     field in on the way through costs nothing and keeps rule 4 true, that a document
     in memory always has every field.
+
+    A reading stored before barlines were recorded gets an empty list, which is not a
+    guess: it is what a page with no barline detected on it stores anyway, and both
+    mean the same thing to the code that reads it, that the staff is one measure from
+    end to end.  Re-analyzing such a reading fills them in properly.
     """
     if isinstance(doc, dict):
         doc.setdefault("key_override", None)
+        doc.setdefault("edits", [])
+        for system in doc.get("systems") or []:
+            if not isinstance(system, dict):
+                continue
+            for staff in system.get("staves") or []:
+                if isinstance(staff, dict):
+                    staff.setdefault("barlines", [])
     return doc
 
 
@@ -90,6 +104,34 @@ def _require(obj, keys, where):
     extra = [k for k in obj if k not in keys]
     if extra:
         raise SchemaError("%s: unexpected keys %s" % (where, ", ".join(sorted(extra))))
+
+
+EDIT_KINDS = ("accidental",)
+ACCIDENTALS_WRITABLE = ("sharp", "flat", "natural")
+
+
+def _check_edits(edits):
+    """The corrections a person made by hand, which outlive the reading they touched."""
+    if not isinstance(edits, list):
+        raise SchemaError("edits: expected a list")
+    for index, edit in enumerate(edits):
+        where = "edits[%d]" % index
+        if not isinstance(edit, dict):
+            raise SchemaError("%s: expected an object" % where)
+        if edit.get("kind") not in EDIT_KINDS:
+            raise SchemaError("%s: unknown kind %r" % (where, edit.get("kind")))
+        _require(edit, ("kind", "system", "event", "staff", "note", "value", "y"),
+                 where)
+        for field in ("system", "event", "staff", "note"):
+            value = edit[field]
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise SchemaError("%s.%s: expected an index, got %r"
+                                  % (where, field, value))
+        if edit["value"] not in ACCIDENTALS_WRITABLE:
+            raise SchemaError("%s.value: expected one of %r, got %r"
+                             % (where, ACCIDENTALS_WRITABLE, edit["value"]))
+        if not isinstance(edit["y"], (int, float)) or isinstance(edit["y"], bool):
+            raise SchemaError("%s.y: expected a number, got %r" % (where, edit["y"]))
 
 
 def validate_analysis(doc):
@@ -112,6 +154,7 @@ def validate_analysis(doc):
                                      and not isinstance(override, bool)
                                      and -7 <= override <= 7):
         raise SchemaError("key_override: expected null or -7..7, got %r" % (override,))
+    _check_edits(doc["edits"])
 
     for si, system in enumerate(doc["systems"]):
         where = "system[%d]" % si

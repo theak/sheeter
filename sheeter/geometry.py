@@ -1544,6 +1544,11 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
             "key_fifths": int(fifths),
             "key_confidence": round(float(key_conf), 2),
             "cut_off": bool(cut_off),
+            # Kept because a written accidental holds only to the end of its measure,
+            # so anything that re-derives a pitch later needs to know where the
+            # measures are.  apply_alterations has them here and nothing downstream
+            # could work them out again without the photo.
+            "barlines": [round(float(x), 1) for x in barlines],
         })
 
     drop_time_signature(per_staff, key_ends, unit)

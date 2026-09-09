@@ -24,6 +24,7 @@ def _staff(index, hand, clef, top):
         "index": index, "hand": hand, "clef": clef, "clef_confidence": 0.8,
         "lines": lines, "unit": 20.0, "x_range": [50.0, 750.0],
         "key_fifths": 0, "key_confidence": 0.5, "cut_off": False,
+        "barlines": [],
     }
 
 

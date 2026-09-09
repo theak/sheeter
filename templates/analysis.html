@@ -7,6 +7,16 @@ analysis_id = doc["id"]
 
 HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
 HAND_SHORT = {"right": "R", "left": "L"}
+# Which noteheads carry an accidental somebody wrote by hand, so the row can say so.
+# The note itself cannot tell: a hand written sharp and a printed one are the same
+# field, which is the point of applying them the same way.
+by_hand = set()
+for edit in doc["edits"]:
+    if edit["kind"] == "accidental":
+        by_hand.add((edit["system"], edit["event"], edit["staff"], edit["note"]))
+    end
+end
+ACCIDENTAL_GLYPH = {"sharp": "\u266f", "flat": "\u266d", "natural": "\u266e"}
 staff_rows = []
 event_rows = []
 for system in doc["systems"]:
@@ -30,7 +40,22 @@ for system in doc["systems"]:
             # "G♯ 4" not "G♯4", the same spacing overlay.js uses on the labels.
             names = [re.sub(r"(\d+)$", r" \1", note["pretty"]) for note in part["notes"]]
             names.reverse()
+            # High to low, like the names, but each keeping the position it has in the
+            # stored chord: that index is what the edit form posts back.
+            editable = []
+            for position in range(len(part["notes"]) - 1, -1, -1):
+                note = part["notes"][position]
+                editable.append({
+                    "position": position,
+                    "pretty": re.sub(r"(\d+)$", r" \1", note["pretty"]),
+                    "accidental": note["accidental"] or "",
+                    "by_hand": (system["index"], event["index"], part["staff"],
+                                position) in by_hand,
+                })
+            end
             parts.append({
+                "staff": part["staff"],
+                "notes": editable,
                 "hand": HAND_LABEL.get(part["hand"]) or (
                     str(staff.get("clef", "")).capitalize() + " staff").strip(),
                 # No badge letter for a lone staff: the hand column already says
@@ -50,6 +75,8 @@ for system in doc["systems"]:
             "symbol": combined.get("symbol") or "",
             "common_name": combined.get("common_name") or "",
             "low_confidence": (event["confidence"] or 0) < 0.7,
+            "by_hand": any(note["by_hand"] for part in parts
+                           for note in part["notes"]),
             "note": event["note"] or "",
             "parts": parts,
         })
@@ -126,9 +153,17 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <!-- Always offered, not only when the reading is stale: after pulling a change to
            the reader, this is how a page already in the gallery gets the new reading. -->
       <form action="/a/{{analysis_id}}/reanalyze" method="post" class="inline-form"
+%     if doc['edits']:
+            onsubmit="if(!confirm('Re-reading the photo starts over, so the {{len(doc['edits'])}} correction(s) you made by hand will be cleared. Carry on?')){return false;}var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Re-analyzing';">
+%     else:
             onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Re-analyzing';">
+%     end
         <button type="submit" class="secondary">Re-analyze</button>
       </form>
+%     if doc['edits']:
+      <p class="muted edits-note">{{len(doc['edits'])}} note(s) corrected by hand.
+      Re-analyzing reads the photo again and clears them.</p>
+%     end
     </div>
   </section>
 
@@ -252,6 +287,9 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %             if row['low_confidence']:
               <br><small class="muted">unsure</small>
 %             end
+%             if row['by_hand']:
+              <br><small class="by-hand">corrected by hand</small>
+%             end
             </td>
             <td>
 %             for part in row['parts']:
@@ -264,6 +302,46 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %             if row['note']:
               <span class="hand-line muted">{{row['note']}}</span>
 %             end
+            </td>
+          </tr>
+          <!-- Its own full width row rather than a fourth column: at 390px a column
+               of accidental buttons is pushed off the side of the table and has to be
+               scrolled to, and this app is pointed at a phone.  Collapsed, and every
+               control a submit button, so correcting a note is plain HTML like the key
+               picker and needs no scripting. -->
+          <tr class="fix-row">
+            <td colspan="3">
+              <details class="fix">
+                <summary>Fix step {{row['step']}}</summary>
+%             for part in row['parts']:
+                <p class="fix-hand">{{part['hand']}}</p>
+%               for note in part['notes']:
+                <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
+                  <input type="hidden" name="system" value="{{row['system']}}">
+                  <input type="hidden" name="event" value="{{row['index']}}">
+                  <input type="hidden" name="staff" value="{{part['staff']}}">
+                  <input type="hidden" name="note" value="{{note['position']}}">
+                  <span class="fix-name">{{note['pretty']}}</span>
+%                 for kind, glyph in (('sharp', ACCIDENTAL_GLYPH['sharp']), ('flat', ACCIDENTAL_GLYPH['flat']), ('natural', ACCIDENTAL_GLYPH['natural'])):
+                  <button type="submit" name="value" value="{{kind}}" class="fix-acc"
+                          title="Make {{note['pretty']}} {{kind}}"
+                          {{!'aria-current="true"' if note['accidental'] == kind else ''}}>{{glyph}}</button>
+%                 end
+%                 if note['by_hand']:
+                  <button type="submit" name="value" value="clear"
+                          class="fix-acc fix-clear" title="Undo this correction">undo</button>
+%                 end
+                </form>
+%               end
+%             end
+                <form action="/a/{{analysis_id}}/chord/delete" method="post"
+                      class="fix-delete"
+                      onsubmit="return confirm('Delete this whole chord from the reading?');">
+                  <input type="hidden" name="system" value="{{row['system']}}">
+                  <input type="hidden" name="event" value="{{row['index']}}">
+                  <button type="submit" class="secondary outline">Delete this chord</button>
+                </form>
+              </details>
             </td>
           </tr>
 %   end
