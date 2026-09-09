@@ -27,7 +27,7 @@
 .muted { color: var(--pico-muted-color); }
 
 .masthead { margin-bottom: 1.5rem; }
-.masthead h1 { margin-bottom: 0.3rem; }
+.masthead h1 { margin-bottom: 0; }
 .tagline { color: var(--pico-muted-color); margin-bottom: 0; }
 
 .notice {
@@ -201,7 +201,7 @@
   font-size: 0.85rem;
 }
 .stage-controls input[type="range"] { width: 7rem; margin: 0; }
-.view-button[aria-pressed="true"], .mode-button[aria-pressed="true"],
+.mode-button[aria-pressed="true"],
 .sound-button[aria-pressed="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
@@ -209,7 +209,7 @@
 }
 /* Not var(--pico-color): Pico redefines that inside a button to the inverse, which is white,
    so the unpressed toggles rendered as empty boxes. */
-.view-button[aria-pressed="false"], .mode-button[aria-pressed="false"],
+.mode-button[aria-pressed="false"],
 .sound-button[aria-pressed="false"] {
   background: transparent;
   border-color: var(--pico-muted-border-color);
@@ -303,9 +303,6 @@
 .labels.mode-step .pill { display: none; }
 .labels.mode-step .pill.selected { display: flex; outline: none; }
 
-.labels.show-notes .pill.chord { display: none; }
-.labels.show-chords .pill.hand-r,
-.labels.show-chords .pill.hand-l { display: none; }
 
 .step-mark {
   position: absolute;
@@ -398,55 +395,57 @@
 
 .stage-hint { font-size: 0.8rem; margin: 0.4rem 0 1rem; }
 
-/* ---------- detail ---------- */
-
-.detail {
-  border: 1px solid var(--pico-card-border-color);
-  border-left: 4px solid var(--pico-primary);
-  border-radius: var(--pico-border-radius);
-  background: var(--pico-card-background-color);
-  padding: 1rem;
-  margin-bottom: 2rem;
-}
-.detail h2 { font-size: 1rem; margin-bottom: 0.2rem; color: var(--pico-muted-color); }
-.detail .chord-line { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.1rem; }
-.detail .common-name { margin-bottom: 0.9rem; color: var(--pico-muted-color); }
-.detail .hand-block { margin-bottom: 0.7rem; }
-.detail .hand-block h3 { font-size: 0.9rem; margin-bottom: 0.15rem; }
-.detail .notes-line { font-size: 1.1rem; font-family: var(--pico-font-family-monospace); }
-.detail ul.intervals { list-style: none; padding: 0; margin: 0 0 0.8rem; }
-.detail ul.intervals li { padding: 0.1rem 0; }
-.detail ul.intervals b { font-family: var(--pico-font-family-monospace); }
-.detail .verifier-note {
-  border-left: 3px solid var(--pico-muted-border-color);
-  padding-left: 0.7rem;
-  margin-bottom: 0.8rem;
-}
-.detail .step-nav { display: flex; gap: 0.5rem; margin: 0; }
-.detail .step-nav button { width: auto; margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; }
-
 /* ---------- tables ---------- */
 
-.reading, .staves, .manage, .recent { margin-bottom: 2rem; }
-.reading-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
-.reading-head h2, .staves h2, .manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
-.reading-head button { margin: 0; padding: 0.3rem 0.8rem; font-size: 0.85rem; width: auto; }
+/* The title and its pencil on one line, with the rename field taking their place when
+   it opens.  [hidden] needs saying for both: Pico gives a button and a flex form a
+   display of their own, which beats the browser's own [hidden] rule. */
+/* nowrap, not wrap.  Wrapping breaks the line before it shrinks anything, so a title
+   wide enough to fill a phone pushed the pencil onto a line of its own however
+   shrinkable the heading was; without wrapping the heading shrinks and wraps its own
+   text instead, and the pencil stays beside it.  min-width: 0 is what allows that. */
+.title-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
+.title-row h1 { margin: 0; flex: 1 1 auto; min-width: 0; }
+.title-row h1[hidden] { display: none; }
+.rename-toggle { flex: none; }
+
+/* No display in this rule on purpose: .js-only has to be able to hide the pencil, and
+   at equal specificity the later rule wins, so setting display here left a button with
+   nothing wired to it on show for anyone without scripting.  The display is stated only
+   under .js, matching the specificity of the .js button.js-only rule it has to beat. */
+.rename-toggle {
+  width: auto;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--pico-muted-color);
+}
+.js button.rename-toggle { display: flex; align-items: center; justify-content: center; }
+.js button.rename-toggle[hidden] { display: none; }
+.rename-toggle:hover { color: var(--pico-primary); border-color: var(--pico-primary); }
+
+.rename-form { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.rename-form[hidden] { display: none; }
+.rename-form input { width: auto; min-width: 12rem; margin: 0; }
+.rename-form button { width: auto; margin: 0; padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+
+/* The state chip reads as part of the line rather than as a block above it. */
+.summary-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+.manage, .recent { margin-bottom: 2rem; }
+.manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
 .table-scroll { overflow-x: auto; }
 .table-scroll table { margin: 0; }
 .table-scroll td, .table-scroll th { vertical-align: top; }
-tr.low td { border-left: 3px dashed #d08600; }
-tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
-.hand-line { display: block; }
 
 .inline-form { display: inline-block; margin: 0; }
 .inline-form button { margin: 0; width: auto; }
 .provenance { margin-bottom: 1.5rem; }
 .provenance p { margin-bottom: 0.5rem; }
 
-.rename-row { display: flex; gap: 0.5rem; }
-.rename-row input { margin: 0; }
-.rename-row button { width: auto; margin: 0; white-space: nowrap; }
-.rename-form { margin-bottom: 1rem; }
 .file-links { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.9rem; }
 .danger { --pico-color: #c0392b; --pico-border-color: #c0392b; }
 
@@ -519,3 +518,137 @@ tr.selected-row td { background: var(--pico-card-sectioning-background-color); }
 .key-picker .keysig { flex: none; }
 .key-picker > details > button { width: auto; margin: 0; padding: 0.3rem 0.7rem;
   font-size: 0.85rem; }
+
+/* ---------------------------------------------------------------- manual fixes */
+
+/* One panel per step.  Rendered visible so the page works with scripting off; overlay.js
+   hides all but the selected step's, which is why nothing here hides them. */
+.fixes { margin: 1.2rem 0; }
+.fixes-head { margin: 0 0 0.6rem; }
+
+.fix-panel {
+  border: 1px solid var(--pico-muted-border-color);
+  border-left: 4px solid var(--pico-primary);
+  border-radius: 0.4rem;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 0.8rem;
+}
+.fix-panel h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.2rem;
+  font-size: 1rem;
+  color: var(--pico-muted-color);
+}
+.fix-symbol { font-size: 1.5rem; color: var(--pico-color); font-weight: 700; }
+.fix-panel .common-name { margin: 0 0 0.4rem; font-size: 0.85rem; }
+.fix-model-note { margin: 0 0 0.5rem; font-size: 0.8rem; }
+
+.fix-hand {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pico-muted-color);
+}
+
+/* One row of five: the pitch menu, then the three spellings, then the bin.  A grid and
+   not flex, because the four buttons should line up down the panel however wide the
+   menu's own contents make it, and the menu takes whatever is left. */
+.fix-note {
+  display: grid;
+  grid-template-columns: minmax(3.5rem, 1fr) repeat(4, 2.75rem);
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+}
+.fix-pitch { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.fix-pitch select {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0.35rem 1.4rem 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+/* Undo belongs to the notehead above it but is not one of the five things you do to it,
+   so it takes its own line rather than becoming a sixth column that shifts the rest. */
+button.fix-clear { grid-column: 1 / -1; justify-self: start; width: auto; }
+/* The no-script path for the pitch menu.  With scripting on, changing the menu submits
+   and this is redundant, so overlay.js could hide it -- it does not, because a visible
+   button is also the answer for anyone who changes a select with the keyboard. */
+/* Every width in this section names the element as well as the class.  Pico sizes
+   button[type=submit] at 100%, which is one more specificity point than a bare class
+   has, so .fix-acc { width: auto } never applied at all: it went unnoticed on the
+   buttons that sit in a fixed column and filled it harmlessly, and showed up on undo,
+   which spans the row and stretched right across it. */
+button.fix-go, .fix-add button { width: auto; margin: 0; padding: 0.35rem 0.6rem;
+  font-size: 0.8rem; }
+/* Pico gives a button display:block, which beats the browser's own [hidden] rule, so
+   hiding Move needs saying here or the attribute does nothing. */
+button.fix-go[hidden] { display: none; }
+
+/* Big enough to hit with a thumb, which is what this app is for: 44px is the usual
+   floor for a touch target and an accidental glyph is a small thing to aim at. */
+button.fix-acc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.4rem;
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  background: transparent;
+  border-color: var(--pico-muted-border-color);
+  /* Not var(--pico-color): Pico redefines that inside a button to the inverse of the
+     primary colour, so an accidental drawn in it comes out white on transparent and
+     the buttons look empty.  The key picker's own buttons take primary for the same
+     reason. */
+  color: var(--pico-primary);
+}
+button.fix-acc[aria-current="true"] {
+  background: var(--pico-primary);
+  border-color: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+button.fix-clear { font-size: 0.7rem; min-width: 3rem; padding: 0 0.6rem; }
+
+/* The bin is the one button here that takes something away, so it is not drawn like the
+   three that spell a note: a faint fill that reads as a different kind of control before
+   the icon is even looked at, and the sectioning colour rather than a grey of my own so
+   it stays faint in a dark scheme too. */
+button.fix-drop {
+  color: var(--pico-del-color, #b3261e);
+  background: var(--pico-card-sectioning-background-color);
+}
+button.fix-drop:hover { border-color: var(--pico-del-color, #b3261e); }
+
+.fix-add {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.2rem;
+}
+.fix-add label { margin: 0; font-size: 0.8rem; color: var(--pico-muted-color); }
+.fix-add select { width: auto; min-width: 5.5rem; margin: 0;
+  padding: 0.35rem 1.6rem 0.35rem 0.5rem; font-size: 0.9rem; }
+
+.fix-delete { margin: 0.8rem 0 0; }
+.fix-delete button { margin: 0; font-size: 0.8rem; padding: 0.4rem 0.7rem; width: auto; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.edits-note { flex-basis: 100%; margin: 0.4rem 0 0; font-size: 0.8rem; }

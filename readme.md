@@ -254,10 +254,103 @@ and U+1D11E renders as a missing-glyph box on plenty of systems, which is worse 
 accidentals are drawn where they are printed, which is what the eye matches on.
 
 One limit worth knowing: re-spelling works from each notehead's stored position and its own written
-accidental, and barlines are not stored, so an accidental that carried across the rest of its bar
-is not carried again. A note that inherited a flat that way is spelled from the key instead. The
-Claude pass has always had the same gap. It bites only where a bar has one accidental and a later
-note on the same line leans on it, which is uncommon in the close voicings this is pointed at.
+accidental, so an accidental that carried across the rest of its bar is not carried again, and a
+note that inherited a flat that way is spelled from the key instead. The Claude pass has the same
+gap. It bites only where a bar has one accidental and a later note on the same line leans on it,
+which is uncommon in the close voicings this is pointed at. Barlines are now stored on the staff,
+so the missing piece is only that `restate_staff` does not read them: closing it properly means
+changing what every key pick and every Claude pass produces, which is worth doing on its own rather
+than as a side effect. A note corrected by hand does carry, because that path resolves the measure.
+
+### Fixing a note or a chord by hand
+
+Four things go wrong often enough to be worth correcting by eye rather than by re-reading the
+photo: the reader invents a chord that is not there, usually out of a barline or a slanted beam; it
+misses an accidental fused with the notehead it belongs to; it reads a notehead a space off; and it
+misses a notehead, or a whole hand, entirely. So selecting a step shows a fix panel under the
+photo. Every notehead of that chord gets one row of five: a menu of the staff positions it could
+be on, then sharp, flat and natural, then a bin to take it out of the chord. The bin carries a
+faint fill, because it is the one button in the row that takes something away rather than spelling
+what is there, and that reads before the icon does. Then an "add a note" menu for each hand, and
+one button to delete the whole chord.
+
+The accidental in force is the one marked, and that is the note's alteration rather than only what
+is printed in front of it: a note the key signature sharpens shows sharp, because that is what it
+sounds. Asking for the one already marked does nothing and records nothing, so agreeing with the
+page cannot leave a reading covered in corrections that correct nothing.
+
+"Delete this chord" sits at the top of the panel, being the one control that is about the whole
+step rather than about one notehead; last, on a panel long enough to scroll, it sat under the hand
+you had just finished correcting. "Move" applies a pitch picked from the menu and is hidden until
+the menu is actually changed, so it is not a button asking to be puzzled over on every notehead at
+once. The overlay hides it rather than revealing it, which is what keeps the menu submittable with
+no scripting.
+
+The title is renamed where it is written, behind a pencil beside it, and the state of the reading
+is a chip on the line under it rather than a paragraph of its own: "Geometry only" said in prose
+what the chip already said. Renaming follows the same rule as everything else here, being rendered
+in the page and hidden by the overlay, so with no scripting the title is editable where it stands
+and the pencil is not offered at all.
+
+One trap worth knowing before adding a width to any of these controls: Pico sizes
+`button[type=submit]` at 100%, and an attribute selector outranks a bare class, so
+`.some-button { width: auto }` silently does nothing. Every width in that part of the stylesheet
+names the element as well as the class for that reason. It went unnoticed on the buttons that sit
+in a fixed column and filled it harmlessly, and showed up on "undo", which spans its row.
+
+The panel replaced two things that said what the labels on the photo already say: a step detail
+that read the selected chord back in prose, and a table of the whole reading underneath it. The
+staves table went too, since the key it listed is what the picker at the top of the page shows.
+What went with all three, and is worth knowing: the interval list from the bass up, the roman
+numeral, the duration hints, the low-confidence warning in words, and each staff's clef and
+cut-off flag. The chord's common name and the Claude pass's per-event note are kept in the fix
+panel's own heading, since it is per-step and there was nowhere else for them. "Copy as text" moved
+into the fix section rather than going with the table it sat on. A clipped staff still says so, in
+the warnings at the top, which is where it always was.
+
+The labels over the photo are always both notes and chords now. Choosing between them was three
+buttons for a decision nobody needs to make; the decision that matters on a dense page is how many
+labels at once, so "One step" and "All labels" moved into the bar above the photo where the labels
+they control are, and the bar below the photo is left to stepping.
+
+An accidental written by hand behaves like a printed one: it holds at that staff position until the
+next barline, so correcting the first E flat of a bar corrects the later ones that lean on it and
+leaves the bar after it alone. That is the same rule `apply_alterations` applies when the page is
+first read, resolved against the barlines stored on the staff, which is why it needed them stored.
+A notehead that carries its own accidental is not overruled by the carry, and neither hand reaches
+into the other.
+
+Deleting a chord renumbers the ones after it, because the schema requires an event's index to be
+its position and the Claude pass matches its answer up by that index. Stored corrections move along
+with their chords, and a correction on the deleted chord goes with it. Taking the last notehead out
+of a hand takes the hand, and the last hand takes the chord: an event with no parts is not a chord
+the schema will hold, and a hand with no noteheads is not a hand playing a rest.
+
+Only the accidentals are kept for replay, and the reason is worth stating because it decides the
+whole design. Moving, adding and removing a notehead all write the geometry, and everything that
+re-derives a pitch reads the geometry: `restate_staff` walks the noteheads that are there and works
+each one out from its own y. So those three outlive a key pick with nothing replayed. A written
+accidental is the one correction that does not, because re-deriving reads that field and resolves
+it against the key instead. So the log holds accidentals, and re-applies them after anything that
+re-derives a pitch: picking a key re-spells every notehead, and the Claude pass re-reads every
+accidental off the image, so without the replay either one would quietly undo a person's answer.
+Replaying a structural change onto a structure that already contains it is a question this never
+has to answer.
+
+A correction is anchored by the height it was made at and not by the notehead's place in the chord,
+so adding or removing a notehead cannot silently re-point the corrections after it. The slack is a
+quarter of a step, which scales with the photo: a fixed pixel count would drop every correction on
+a page the next reading nudged by a pixel, or slide one onto the staff position next door. Re-analyze is the exception. A fresh reading of the photo renumbers everything and
+may not contain the notehead at all, so there is no anchor left that means anything, and the
+corrections are cleared rather than moved onto whatever now sits at that index. The page says how
+many it holds and warns before the button.
+
+Every control is a submit button, so correcting a reading works with scripting off, like the key
+picker: a panel per step is rendered for every step and all of them are visible, and it is the
+overlay that hides all but the selected one. One form per notehead rather than one per button,
+each button pointing itself at its route with `formaction`, because five forms a notehead repeated
+the same four indices five times and put 36KB of it on a thirteen-step page. The whole page is
+164KB there, 9KB gzipped, being almost entirely repeated pitch menus.
 
 ### Hearing the chords
 

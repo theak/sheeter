@@ -64,6 +64,7 @@ def _staff():
         "key_fifths": -2,
         "key_confidence": 0.8,
         "cut_off": False,
+        "barlines": [],
     }
 
 

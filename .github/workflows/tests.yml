@@ -39,7 +39,17 @@ jobs:
       # dependencies, so there is no need to name them here.
       - name: Install cairo
         run: |
-          sudo apt-get update
+          # apt-get update reads every source on the runner image, including repos this
+          # project has nothing to do with, and exits non-zero if any one of them is
+          # briefly inconsistent.  That is what happened here: Chrome's repo published a
+          # Release file newer than its own Packages index, apt exited 100 over it, and
+          # with bash -e the step stopped before installing anything, so pytest never
+          # ran and the job failed for a reason nowhere near this repository.
+          #
+          # The install is the real gate, so let update report what it could not reach
+          # and carry on.  If the Ubuntu archive itself were unreachable, or libcairo2
+          # were not there, the install below fails and the job still stops.
+          sudo apt-get update || echo "::warning::apt-get update could not reach every repo; continuing to the install, which is the gate"
           sudo apt-get install -y --no-install-recommends libcairo2
 
       - name: Install dependencies

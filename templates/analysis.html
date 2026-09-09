@@ -6,52 +6,73 @@ warnings = doc["warnings"] or []
 analysis_id = doc["id"]
 
 HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
-HAND_SHORT = {"right": "R", "left": "L"}
-staff_rows = []
-event_rows = []
+ACCIDENTAL_BUTTONS = (("sharp", "\u266f"), ("flat", "\u266d"), ("natural", "\u266e"))
+#: alter to the button that is in force.  The state a reader wants marked is what the
+#: note sounds now, not only what is printed in front of it: a note sharpened by the key
+#: signature shows sharp, because that is what it is.
+ALTER_BUTTON = {-1: "flat", 0: "natural", 1: "sharp"}
+
+fix_steps = []
 for system in doc["systems"]:
-    by_index = {}
+    # One pitch menu per staff, not per notehead: the options are the same for every
+    # note on it, and a page of dense chords would otherwise build the list many times.
+    menus = {}
     for staff in system["staves"]:
-        by_index[staff["index"]] = staff
-        fifths = staff["key_fifths"]
-        staff_rows.append({
-            "system": system["index"] + 1,
-            "hand": HAND_LABEL.get(staff["hand"]) or (staff["clef"].capitalize() + " staff"),
-            "clef": staff["clef"],
-            "key": keysig.label(fifths),
-            "accidentals": keysig.count(fifths),
-            "cut_off": staff["cut_off"],
-        })
+        menus[staff["index"]] = pipeline.pitch_choices(staff)
     end
     for event in system["events"]:
-        parts = []
-        for part in event["parts"]:
-            staff = by_index.get(part["staff"]) or {}
-            # "G♯ 4" not "G♯4", the same spacing overlay.js uses on the labels.
-            names = [re.sub(r"(\d+)$", r" \1", note["pretty"]) for note in part["notes"]]
-            names.reverse()
-            parts.append({
-                "hand": HAND_LABEL.get(part["hand"]) or (
-                    str(staff.get("clef", "")).capitalize() + " staff").strip(),
-                # No badge letter for a lone staff: the hand column already says
-                # "Treble staff", and "Treble Treble staff" reads badly.
-                "short": HAND_SHORT.get(part["hand"]) or "",
-                "tone": "l" if (part["hand"] == "left" or
-                                staff.get("clef") == "bass") else "r",
-                "names": ", ".join(names),
-                "chord": (part["chord"] or {}).get("symbol") or "",
+        hands = []
+        for staff in system["staves"]:
+            part = None
+            for candidate in event["parts"]:
+                if candidate["staff"] == staff["index"]:
+                    part = candidate
+                end
+            end
+            slack = (staff["unit"] or 20.0) / 8.0
+            notes = []
+            for position in range(len(part["notes"]) if part else 0):
+                note = part["notes"][position]
+                corrected = False
+                for edit in doc["edits"]:
+                    if (edit["system"] == system["index"]
+                            and edit["event"] == event["index"]
+                            and edit["staff"] == staff["index"]
+                            and abs(edit["y"] - note["y"]) <= slack):
+                        corrected = True
+                    end
+                end
+                step, _err = pitches.y_to_step(note["y"], staff["lines"], staff["clef"])
+                notes.append({
+                    "position": position,
+                    # "G# 4" not "G#4", the same spacing overlay.js uses on the labels.
+                    "pretty": re.sub(r"(\d+)$", r" \1", note["pretty"]),
+                    "step": step,
+                    "current": ALTER_BUTTON.get(note["alter"], ""),
+                    "by_hand": corrected,
+                })
+            end
+            notes.reverse()          # high to low, the way a chord is read off the page
+            hands.append({
+                "staff": staff["index"],
+                "label": HAND_LABEL.get(staff["hand"]) or (
+                    str(staff["clef"]).capitalize() + " staff"),
+                "notes": notes,
+                "choices": menus[staff["index"]],
+                # The middle of the staff, which is the least surprising place for a
+                # notehead somebody is adding from scratch to start.
+                "add_default": pitches.CLEF_BOTTOM_LINE_STEP[staff["clef"]] + 4,
             })
         end
         combined = event["combined"] or {}
-        event_rows.append({
+        fix_steps.append({
+            "number": len(fix_steps) + 1,
             "system": system["index"],
-            "index": event["index"],
-            "step": len(event_rows) + 1,
+            "event": event["index"],
             "symbol": combined.get("symbol") or "",
             "common_name": combined.get("common_name") or "",
-            "low_confidence": (event["confidence"] or 0) < 0.7,
             "note": event["note"] or "",
-            "parts": parts,
+            "hands": hands,
         })
     end
 end
@@ -80,10 +101,35 @@ safe_json = analysis_json.replace("<", "\\u003C")
   </nav>
 
   <header class="masthead">
-    <h1 id="doc-title">{{doc['title']}}</h1>
-    <p class="muted">{{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
-    {{len(event_rows)}} step{{'' if len(event_rows) == 1 else 's'}},
-    read from a {{image['width']}}&times;{{image['height']}} image.</p>
+    <div class="title-row">
+      <h1 id="doc-title">{{doc['title']}}</h1>
+      <!-- The form is rendered and overlay.js hides it, so with no scripting the title is
+           editable where it stands and the pencil is simply absent.  Hiding it here and
+           revealing it in script would put renaming behind javascript. -->
+      <button type="button" id="rename-toggle" class="rename-toggle js-only"
+              title="Rename this reading" aria-label="Rename this reading">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path fill="currentColor"
+                d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+        </svg>
+      </button>
+      <form action="/a/{{analysis_id}}/rename" method="post" class="rename-form"
+            id="rename-form">
+        <label class="visually-hidden" for="title-input">Title</label>
+        <input type="text" id="title-input" name="title" value="{{doc['title']}}"
+               maxlength="120">
+        <button type="submit">Rename</button>
+      </form>
+    </div>
+    <p class="muted summary-row">
+% if engine['verified']:
+      <span class="badge badge-ok">Checked by Claude</span>
+% else:
+      <span class="badge">Geometry only</span>
+% end
+      {{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
+      {{len(fix_steps)}} step{{'' if len(fix_steps) == 1 else 's'}},
+      read from a {{image['width']}}&times;{{image['height']}} image.</p>
   </header>
 
 % if warnings:
@@ -105,16 +151,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
     to date. The photo is still here.</p>
 % end
 % if engine['verified']:
-    <p><span class="badge badge-ok">Checked by Claude</span>
-    The geometry reading was reviewed against the photo by
+    <p>The geometry reading was reviewed against the photo by
     <strong>{{engine['verifier'] or 'the vision model'}}</strong>, and its corrections applied.</p>
-% else:
-    <p><span class="badge">Geometry only</span>
-    These pitches come from measuring notehead positions against the staff lines. No model has
-    looked at the photo to check them.</p>
-%   if engine['verifier_error']:
+% elif engine['verifier_error']:
     <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
-%   end
 % end
     <div class="provenance-actions">
 % if not engine['verified'] and verify_available:
@@ -126,9 +166,21 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <!-- Always offered, not only when the reading is stale: after pulling a change to
            the reader, this is how a page already in the gallery gets the new reading. -->
       <form action="/a/{{analysis_id}}/reanalyze" method="post" class="inline-form"
+%     if doc['edits']:
+            onsubmit="if(!confirm('Re-reading the photo starts over, so the {{len(doc['edits'])}} correction(s) you made by hand will be cleared. Carry on?')){return false;}var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Re-analyzing';">
+%     else:
             onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Re-analyzing';">
+%     end
         <button type="submit" class="secondary">Re-analyze</button>
       </form>
+      <!-- Copying the reading out is a thing you do to the whole reading, like the two
+           above it, so it sits with them rather than over the panels. -->
+      <button type="button" id="copy-button"
+              class="secondary outline js-only">Copy as text</button>
+%     if doc['edits']:
+      <p class="muted edits-note">{{len(doc['edits'])}} note(s) corrected by hand.
+      Re-analyzing reads the photo again and clears them.</p>
+%     end
     </div>
   </section>
 
@@ -174,10 +226,9 @@ safe_json = analysis_json.replace("<", "\\u003C")
 % end
 
   <div class="stage-controls js-only" role="group" aria-label="Overlay controls">
-    <div class="control-group" role="group" aria-label="What to show">
-      <button type="button" class="view-button" data-view="notes">Notes</button>
-      <button type="button" class="view-button" data-view="chords">Chords</button>
-      <button type="button" class="view-button" data-view="both">Both</button>
+    <div class="control-group" role="group" aria-label="How many labels to show">
+      <button type="button" class="mode-button" data-mode="step">One step</button>
+      <button type="button" class="mode-button" data-mode="all">All labels</button>
     </div>
     <div class="control-group">
       <label for="size-range">Label size</label>
@@ -208,14 +259,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <!-- No role="group" here: Pico styles that as a button bar, which shrank this layer
            short of the photo and collapsed the step markers' tap area. Every button inside
            carries its own aria-label. -->
-      <div id="labels" class="labels show-both"></div>
+      <div id="labels" class="labels"></div>
     </div>
   </div>
   <div id="step-bar" class="step-bar">
-    <div class="control-group" role="group" aria-label="How many labels to show">
-      <button type="button" class="mode-button" data-mode="step">One step</button>
-      <button type="button" class="mode-button" data-mode="all">All labels</button>
-    </div>
     <div class="step-group">
       <button type="button" id="step-prev" class="secondary outline">&larr; Prev</button>
       <p id="step-status" class="step-status" role="status"></p>
@@ -224,89 +271,101 @@ safe_json = analysis_json.replace("<", "\\u003C")
   </div>
 
   <p id="stage-empty" class="notice notice-warn" hidden></p>
-  <p class="muted stage-hint js-only">Tap a numbered dot to read that step, or use Prev and Next
-  and the arrow keys. Pinch or use + and &minus; to zoom; drag to move around; Fit puts it back.</p>
-
-  <section id="detail" class="detail" hidden></section>
-
-  <section class="reading">
-    <div class="reading-head">
-      <h2>The whole reading</h2>
-      <button type="button" id="copy-button" class="secondary outline js-only">Copy as text</button>
+  <!-- One fix panel per step, rendered by the server and all of them present.  overlay.js
+       hides every panel but the selected step's, so with scripting off they are all
+       simply there, each labelled, and correcting a reading still works: the same
+       direction of progressive enhancement the key picker takes. -->
+  <section id="fixes" class="fixes">
+% if fix_steps:
+%   for fix in fix_steps:
+    <div class="fix-panel" id="fix-{{fix['number']}}" data-step="{{fix['number']}}">
+      <h2>Step {{fix['number']}} of {{len(fix_steps)}}<span class="fix-symbol">{{fix['symbol']}}</span></h2>
+%     if fix['common_name']:
+      <p class="common-name">{{fix['common_name']}}</p>
+%     end
+%     if fix['note']:
+      <p class="muted fix-model-note">{{fix['note']}}</p>
+%     end
+      <form action="/a/{{analysis_id}}/chord/delete" method="post" class="fix-delete"
+            onsubmit="return confirm('Delete this whole chord from the reading?');">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <button type="submit" class="secondary outline">Delete this chord</button>
+      </form>
+%     for hand in fix['hands']:
+      <h3 class="fix-hand">{{hand['label']}}</h3>
+%       if not hand['notes']:
+      <p class="muted">Nothing read on this staff here.</p>
+%       end
+%       for note in hand['notes']:
+      <!-- One form per notehead, not one per button: every control here names the same
+           notehead, so they share the hidden inputs and each button points itself at the
+           route it wants with formaction.  Five forms a note repeated the same four
+           indices five times over and put 36KB of it on a thirteen step page. -->
+      <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="note" value="{{note['position']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <span class="fix-pitch">
+          <label class="visually-hidden"
+                 for="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}">Which note {{note['pretty']}} is</label>
+          <select id="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}" name="step">
+%         for choice in hand['choices']:
+            <option value="{{choice['step']}}"{{!' selected' if choice['step'] == note['step'] else ''}}>{{choice['pretty']}}</option>
+%         end
+          </select>
+          <!-- Rendered visible: overlay.js hides it until the menu is actually changed,
+               so with no scripting the menu keeps the submit button it needs. -->
+          <button type="submit" class="fix-go secondary outline"
+                  formaction="/a/{{analysis_id}}/note/pitch">Move</button>
+        </span>
+%       for kind, glyph in ACCIDENTAL_BUTTONS:
+        <button type="submit" name="value" value="{{kind}}" class="fix-acc"
+                title="Make {{note['pretty']}} {{kind}}"
+                {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
+%       end
+        <!-- A bin rather than a fourth accidental: removing a notehead is not one of the
+             three things that spell it, and the faint fill says so before the icon does. -->
+        <button type="submit" class="fix-acc fix-drop"
+                formaction="/a/{{analysis_id}}/note/delete"
+                title="Take {{note['pretty']}} out of this chord">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"
+               focusable="false"><path fill="currentColor"
+            d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9zm3 2v9h2v-9H9zm4 0v9h2v-9h-2z"/></svg>
+          <span class="visually-hidden">Remove {{note['pretty']}}</span>
+        </button>
+%       if note['by_hand']:
+        <button type="submit" name="value" value="clear" class="fix-acc fix-clear"
+                title="Undo the correction on {{note['pretty']}}">undo</button>
+%       end
+      </form>
+%       end
+      <form action="/a/{{analysis_id}}/note/add" method="post" class="fix-add">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <label for="a-{{fix['number']}}-{{hand['staff']}}">Add a note</label>
+        <select id="a-{{fix['number']}}-{{hand['staff']}}" name="step">
+%       for choice in hand['choices']:
+          <option value="{{choice['step']}}"{{!' selected' if choice['step'] == hand['add_default'] else ''}}>{{choice['pretty']}}</option>
+%       end
+        </select>
+        <button type="submit" class="secondary outline">Add</button>
+      </form>
+%     end
     </div>
-% if event_rows:
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>Step</th><th>Chord</th><th>Notes, high to low</th></tr>
-        </thead>
-        <tbody>
-%   for row in event_rows:
-          <tr id="row-{{row['system']}}-{{row['index']}}" class="{{'low' if row['low_confidence'] else ''}}">
-            <td>{{row['step']}}</td>
-            <td>
-              <strong>{{row['symbol'] or '-'}}</strong>
-%             if row['common_name']:
-              <br><small class="muted">{{row['common_name']}}</small>
-%             end
-%             if row['low_confidence']:
-              <br><small class="muted">unsure</small>
-%             end
-            </td>
-            <td>
-%             for part in row['parts']:
-              <span class="hand-line">
-%               if part['short']:
-              <span class="key key-{{part['tone']}}">{{part['short']}}</span>
-%               end
-              {{part['hand']}}: {{part['names']}}</span>
-%             end
-%             if row['note']:
-              <span class="hand-line muted">{{row['note']}}</span>
-%             end
-            </td>
-          </tr>
 %   end
-        </tbody>
-      </table>
-    </div>
 % else:
-    <p class="muted">No noteheads were found, so there is nothing to list.</p>
+    <p class="muted">No noteheads were found, so there is nothing to correct.</p>
 % end
   </section>
-
-% if staff_rows:
-  <section class="staves">
-    <h2>Staves</h2>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>System</th><th>Hand</th><th>Clef</th><th>Key signature</th></tr>
-        </thead>
-        <tbody>
-%   for row in staff_rows:
-          <tr>
-            <td>{{row['system']}}</td>
-            <td>{{row['hand']}}{{' (cut off)' if row['cut_off'] else ''}}</td>
-            <td>{{row['clef']}}</td>
-            <td>{{row['key']}}<br><small class="muted">{{row['accidentals']}}</small></td>
-          </tr>
-%   end
-        </tbody>
-      </table>
-    </div>
-  </section>
-% end
 
   <section class="manage">
     <h2>This reading</h2>
-    <form action="/a/{{analysis_id}}/rename" method="post" class="rename-form">
-      <label for="title-input">Title</label>
-      <div class="rename-row">
-        <input type="text" id="title-input" name="title" value="{{doc['title']}}" maxlength="120">
-        <button type="submit">Rename</button>
-      </div>
-    </form>
     <p class="file-links">
       <a href="/a/{{analysis_id}}/original">Original photo</a>
       <a href="/a/{{analysis_id}}/processed.png">Straightened image</a>

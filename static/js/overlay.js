@@ -33,10 +33,9 @@
   var stage = document.getElementById('stage');
   var sheet = document.getElementById('sheet');
   var labels = document.getElementById('labels');
-  var detail = document.getElementById('detail');
+  var fixes = document.getElementById('fixes');
   var stageEmpty = document.getElementById('stage-empty');
   var controls = document.querySelector('.stage-controls');
-  var hint = document.querySelector('.stage-hint');
   var stepBar = document.getElementById('step-bar');
   var stepStatus = document.getElementById('step-status');
   var stepPrev = document.getElementById('step-prev');
@@ -102,10 +101,6 @@
     return (staff && staff.clef === 'bass') ? 'l' : 'r';
   }
 
-  function prettyPitch(name) {
-    return String(name).replace(/b/g, '\u266d').replace(/#/g, '\u266f');
-  }
-
   // "G\u266f 4" rather than "G\u266f4": the octave is a separate thing from the note, and
   // at label size the two run together.  Done at display time so every stored reading
   // shows the same way, and the JSON keeps the compact form the rest of the code reads.
@@ -120,33 +115,6 @@
       out.push(spaced(part.notes[i].pretty || part.notes[i].name));
     }
     return out;
-  }
-
-  // The reader stops at "quarter or shorter" on purpose; see geometry.duration_hint.
-  var DURATION_WORDS = {
-    'whole': 'whole notes',
-    'half': 'half notes',
-    'quarter-or-shorter': 'quarter notes or shorter'
-  };
-
-  var ORDINALS = ['', 'unison', '2nd', '3rd', '4th', '5th', '6th', '7th', 'octave',
-                  '9th', '10th', '11th', '12th', '13th', '14th', 'two octaves'];
-  var QUALITIES = {
-    P: 'perfect', M: 'major', m: 'minor', A: 'augmented', d: 'diminished',
-    AA: 'doubly augmented', dd: 'doubly diminished'
-  };
-
-  function intervalWords(code, index) {
-    var match = /^([PMmAd]{1,2})(\d{1,2})$/.exec(String(code || ''));
-    if (!match) { return String(code || ''); }
-    var number = parseInt(match[2], 10);
-    // Only the first entry is the bass note. A later unison is the same note an octave
-    // or more up, and calling that "the bass note" too names two pitches as the bass.
-    if (number === 1) { return index ? 'the same note, higher up' : 'the bass note'; }
-    var quality = QUALITIES[match[1]] || match[1];
-    var name = ORDINALS[number] || (number + 'th');
-    if (number === 8 || number === 15) { return quality === 'perfect' ? 'an octave up' : quality + ' ' + name; }
-    return 'a ' + quality + ' ' + name + ' up';
   }
 
   // ---------------------------------------------------------------- events
@@ -430,25 +398,16 @@
       stepBar.classList.add('on');
       stepBar.classList.toggle('step-mode', mode === 'step');
     }
-    if (hint) {
-      hint.textContent = (mode === 'step'
-        ? 'Tap a numbered dot to read that step, or use Prev and Next, or the arrow keys. '
-        : 'Tap any label to read that step. ') +
-        'Pinch or use + and - to zoom; drag to move around; Fit puts it back.';
-    }
     layoutLabels();
     if (remember) {
       chosenByUser = true;
       store('labelMode', mode);
       // Asking for every label at once on a dense reading otherwise gives labels stacked
       // on top of each other, and zooming cannot separate them: it scales the labels and
-      // the gaps between them by the same amount.  Shrinking them can.
-      // Sometimes there is no size that fits.  Four five-note stacks on a phone is
-      // more label than there is screen, and saying so beats leaving it looking broken.
-      if (mode === 'all' && !shrinkToFit() && hint) {
-        hint.textContent = 'These labels are too close together to all fit at this width. '
-          + 'One step at a time is clearer here. ' + hint.textContent;
-      }
+      // the gaps between them by the same amount.  Shrinking them can.  Sometimes no
+      // size fits, and there is nothing to say about that: the mode buttons are right
+      // there, and the reader can see the labels touching as well as we can.
+      if (mode === 'all') { shrinkToFit(); }
     }
     if (mode === 'step') {
       if (selected) { frameStep(steps[selected - 1]); }
@@ -471,95 +430,49 @@
     if (stepNext) { stepNext.disabled = selected >= steps.length; }
   }
 
-  // ---------------------------------------------------------------- detail
+  // ---------------------------------------------------------------- fix panels
 
   var selected = 0;
 
-  function buildDetail(step) {
-    var event = step.event;
-    var combined = event.combined || {};
-    detail.textContent = '';
+  // Server rendered, one per step, all present in the page.  With scripting off that is
+  // the whole feature: every panel is visible and labelled with its step.  With
+  // scripting on, only the selected step's panel is shown, directly under the photo,
+  // which is what makes it read as belonging to the step rather than to the page.
+  var panels = fixes ? fixes.querySelectorAll('.fix-panel') : [];
 
-    detail.appendChild(el('h2', null, 'Step ' + step.number + ' of ' + steps.length));
-
-    var names = (combined.pretty || combined.names || []).map(spaced);
-    detail.appendChild(el('p', 'chord-line', combined.symbol || names.join(' ') || 'no chord named'));
-    if (combined.common_name) {
-      detail.appendChild(el('p', 'common-name', combined.common_name));
+  function showPanel(number) {
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].hidden = Number(panels[i].dataset.step) !== number;
     }
-
-    (event.parts || []).forEach(function (part) {
-      var staff = staffOf(step.system, part.staff);
-      var block = el('div', 'hand-block');
-      block.appendChild(el('h3', null, handName(part, staff)));
-      var shown = displayNames(part);
-      block.appendChild(el('p', 'notes-line', shown.join('  ')));
-      var extras = [];
-      if (part.chord && part.chord.symbol) {
-        // A power chord's symbol is the root plus a bare 5, which reads as a note name
-        // to someone who knows note names and not chord symbols, which is this reader.
-        extras.push(/^[A-G][b#\u266d\u266f]?5$/.test(part.chord.symbol)
-          ? 'on its own: a bare fifth, ' + prettyPitch(part.chord.symbol.slice(0, -1)) + ' and the note five above it'
-          : 'on its own: ' + part.chord.symbol);
-      }
-      if (part.duration_hint) {
-        var length = DURATION_WORDS[part.duration_hint] || (part.duration_hint + ' notes');
-        extras.push(length + (part.dotted ? ', dotted' : ''));
-      }
-      if (shown.length === 1) {
-        extras.push('a single note');
-      } else {
-        extras.push(shown.length + ' notes together');
-      }
-      block.appendChild(el('p', 'muted', extras.join(' - ')));
-      detail.appendChild(block);
-    });
-
-    if (names.length && combined.bass) {
-      detail.appendChild(el('h3', null, 'Every note, from the bass up'));
-      var list = el('ul', 'intervals');
-      var intervals = combined.intervals_from_bass || [];
-      names.forEach(function (name, index) {
-        var item = el('li');
-        item.appendChild(el('b', null, name));
-        var words = intervals.length === names.length
-          ? intervalWords(intervals[index], index) : '';
-        if (words) { item.appendChild(document.createTextNode(' - ' + words)); }
-        list.appendChild(item);
-      });
-      detail.appendChild(list);
-    }
-
-    if (combined.roman) {
-      detail.appendChild(el('p', 'muted', 'Reads as ' + combined.roman + ' in the key of the staff.'));
-    }
-
-    if (event.note) {
-      var quote = el('div', 'verifier-note');
-      quote.appendChild(el('p', null, event.note));
-      quote.appendChild(el('p', 'muted', 'Note from the model that checked this photo.'));
-      detail.appendChild(quote);
-    }
-
-    if ((event.confidence || 0) < 0.7) {
-      detail.appendChild(el('p', 'muted', 'Sheeter is not confident about this step. Check it by eye.'));
-    }
-
-    var nav = el('p', 'step-nav');
-    var previous = el('button', 'secondary outline', 'Previous step');
-    previous.type = 'button';
-    previous.disabled = step.number <= 1;
-    previous.addEventListener('click', function () { select(step.number - 1, true, true); });
-    var next = el('button', 'secondary outline', 'Next step');
-    next.type = 'button';
-    next.disabled = step.number >= steps.length;
-    next.addEventListener('click', function () { select(step.number + 1, true, true); });
-    nav.appendChild(previous);
-    nav.appendChild(next);
-    detail.appendChild(nav);
   }
 
-  var rows = document.querySelectorAll('.reading tbody tr');
+  // Move applies a pitch the reader picked from the menu, so until they pick a different
+  // one there is nothing for it to apply and it only asks to be puzzled over.  Hidden
+  // here rather than shown here, so with no scripting it is simply always there and the
+  // menu still has its submit button: the direction that fails safe.
+  function armPitchMenus() {
+    var forms = document.querySelectorAll('.fix-panel .fix-pitch');
+    for (var i = 0; i < forms.length; i++) {
+      (function (group) {
+        var menu = group.querySelector('select');
+        var apply = group.querySelector('.fix-go');
+        if (!menu || !apply) { return; }
+        var was = menu.value;
+        apply.hidden = true;
+        menu.addEventListener('change', function () {
+          apply.hidden = menu.value === was;
+        });
+      }(forms[i]));
+    }
+  }
+
+  // A correction posts back to #step-N so the reader lands on the step they were fixing
+  // rather than at the top of the page with nothing selected.
+  function stepFromHash() {
+    var match = /^#step-(\d+)$/.exec(window.location.hash || '');
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
 
   // ---------------------------------------------------------------- playback
 
@@ -639,32 +552,23 @@
         marks[i].removeAttribute('aria-current');
       }
     }
-    for (i = 0; i < rows.length; i++) {
-      rows[i].classList.toggle('selected-row', i === number - 1);
-      if (i === number - 1) {
-        rows[i].setAttribute('aria-current', 'true');
-      } else {
-        rows[i].removeAttribute('aria-current');
-      }
-    }
-
-    buildDetail(step);
-    detail.hidden = false;
+    showPanel(number);
     layoutLabels();
     updateStepBar();
     if (mode === 'step') {
       frameStep(step);
-      // Not when the caller is already sending the reader to the detail panel: two smooth
+      // Not when the caller is already sending the reader to the fix panel: two smooth
       // scrolls in one turn fight each other.
       if (!scrollToDetail) { keepStageVisible(step); }
     }
-    if (scrollToDetail) {
-      detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (scrollToDetail && panels.length) {
+      var panel = panels[Math.min(number, panels.length) - 1];
+      if (panel) { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     }
   }
 
   // Stepping is useless if the labels you just asked for are not on screen: below the fold on
-  // a tall photo, or, once the reading table has been scrolled to, hidden behind the control
+  // a tall photo, or, once the fix panel has been scrolled to, hidden behind the control
   // bar, which while stuck to the top of the window covers everything above its bottom edge.
   function keepStageVisible(step) {
     var floor = controls ? Math.max(controls.getBoundingClientRect().bottom, 8) : 8;
@@ -691,13 +595,6 @@
     if (delta) { window.scrollBy({ top: delta, left: 0, behavior: 'smooth' }); }
   }
 
-  for (var r = 0; r < rows.length; r++) {
-    (function (row, index) {
-      row.style.cursor = 'pointer';
-      row.addEventListener('click', function () { select(index + 1, true, true); });
-    }(rows[r], r));
-  }
-
   document.addEventListener('keydown', function (e) {
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
@@ -714,26 +611,6 @@
   });
 
   // ---------------------------------------------------------------- view controls
-
-  var VIEWS = ['notes', 'chords', 'both'];
-
-  function setView(view) {
-    if (VIEWS.indexOf(view) === -1) { view = 'both'; }
-    VIEWS.forEach(function (name) { labels.classList.toggle('show-' + name, name === view); });
-    var buttons = document.querySelectorAll('.view-button');
-    for (var i = 0; i < buttons.length; i++) {
-      buttons[i].setAttribute('aria-pressed', String(buttons[i].dataset.view === view));
-    }
-    store('view', view);
-    layoutLabels();
-  }
-
-  document.querySelectorAll('.view-button').forEach(function (button) {
-    button.addEventListener('click', function () {
-      setView(button.dataset.view);
-      reconsider();
-    });
-  });
 
   var sizeRange = document.getElementById('size-range');
   var MIN_LEGIBLE_LABEL = 8;
@@ -984,11 +861,20 @@
 
   var stored = recall('labelMode', '');
   applyModeClass('all');
-  setView(recall('view', 'both'));
   setSize(recall('labelSize', '12'));
   chosenByUser = (stored === 'step' || stored === 'all');
   setMode(chosenByUser ? stored : (wouldCollide() ? 'step' : 'all'), false);
   applyTransform();
+
+  // Every panel is rendered visible so the page works with scripting off; with scripting
+  // on, hide them and show one.  A correction posts back to #step-N, so the step it was
+  // made on is selected again and the reader carries on where they were; otherwise the
+  // first step, which is what makes the panel a step's panel rather than a page's.
+  var landed = stepFromHash();
+  if (panels.length) {
+    armPitchMenus();
+    select(landed || 1, landed > 0, false);
+  }
 
   var pending = 0;
   window.addEventListener('resize', function () {
@@ -1028,6 +914,41 @@
       : 'Read from staff geometry only, not checked by a model.');
     return lines.join('\n');
   }
+
+  // ---------------------------------------------------------------- renaming
+
+  // The form is in the page and visible; this hides it and offers the pencil instead.
+  // That way renaming is not behind javascript: with none, the title is editable where
+  // it stands, which is the same direction Move and the fix panels take.
+  (function () {
+    var form = document.getElementById('rename-form');
+    var toggle = document.getElementById('rename-toggle');
+    var heading = document.getElementById('doc-title');
+    var field = document.getElementById('title-input');
+    if (!form || !toggle || !heading || !field) { return; }
+
+    var was = field.value;
+
+    function editing(on) {
+      form.hidden = !on;
+      toggle.hidden = on;
+      heading.hidden = on;
+      if (on) { field.focus(); field.select(); }
+    }
+
+    editing(false);
+    toggle.addEventListener('click', function () { editing(true); });
+    // Escape is what a text field that appeared over a heading should answer to, and it
+    // puts the title back rather than leaving a half-typed one in the box.
+    field.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        field.value = was;
+        editing(false);
+        toggle.focus();
+      }
+    });
+  }());
 
   var copyButton = document.getElementById('copy-button');
   if (copyButton) {
