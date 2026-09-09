@@ -36,7 +36,6 @@
   var fixes = document.getElementById('fixes');
   var stageEmpty = document.getElementById('stage-empty');
   var controls = document.querySelector('.stage-controls');
-  var hint = document.querySelector('.stage-hint');
   var stepBar = document.getElementById('step-bar');
   var stepStatus = document.getElementById('step-status');
   var stepPrev = document.getElementById('step-prev');
@@ -399,25 +398,16 @@
       stepBar.classList.add('on');
       stepBar.classList.toggle('step-mode', mode === 'step');
     }
-    if (hint) {
-      hint.textContent = (mode === 'step'
-        ? 'Tap a numbered dot to read that step, or use Prev and Next, or the arrow keys. '
-        : 'Tap any label to read that step. ') +
-        'Pinch or use + and - to zoom; drag to move around; Fit puts it back.';
-    }
     layoutLabels();
     if (remember) {
       chosenByUser = true;
       store('labelMode', mode);
       // Asking for every label at once on a dense reading otherwise gives labels stacked
       // on top of each other, and zooming cannot separate them: it scales the labels and
-      // the gaps between them by the same amount.  Shrinking them can.
-      // Sometimes there is no size that fits.  Four five-note stacks on a phone is
-      // more label than there is screen, and saying so beats leaving it looking broken.
-      if (mode === 'all' && !shrinkToFit() && hint) {
-        hint.textContent = 'These labels are too close together to all fit at this width. '
-          + 'One step at a time is clearer here. ' + hint.textContent;
-      }
+      // the gaps between them by the same amount.  Shrinking them can.  Sometimes no
+      // size fits, and there is nothing to say about that: the mode buttons are right
+      // there, and the reader can see the labels touching as well as we can.
+      if (mode === 'all') { shrinkToFit(); }
     }
     if (mode === 'step') {
       if (selected) { frameStep(steps[selected - 1]); }
@@ -924,6 +914,41 @@
       : 'Read from staff geometry only, not checked by a model.');
     return lines.join('\n');
   }
+
+  // ---------------------------------------------------------------- renaming
+
+  // The form is in the page and visible; this hides it and offers the pencil instead.
+  // That way renaming is not behind javascript: with none, the title is editable where
+  // it stands, which is the same direction Move and the fix panels take.
+  (function () {
+    var form = document.getElementById('rename-form');
+    var toggle = document.getElementById('rename-toggle');
+    var heading = document.getElementById('doc-title');
+    var field = document.getElementById('title-input');
+    if (!form || !toggle || !heading || !field) { return; }
+
+    var was = field.value;
+
+    function editing(on) {
+      form.hidden = !on;
+      toggle.hidden = on;
+      heading.hidden = on;
+      if (on) { field.focus(); field.select(); }
+    }
+
+    editing(false);
+    toggle.addEventListener('click', function () { editing(true); });
+    // Escape is what a text field that appeared over a heading should answer to, and it
+    // puts the title back rather than leaving a half-typed one in the box.
+    field.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        field.value = was;
+        editing(false);
+        toggle.focus();
+      }
+    });
+  }());
 
   var copyButton = document.getElementById('copy-button');
   if (copyButton) {

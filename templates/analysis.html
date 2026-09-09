@@ -101,10 +101,35 @@ safe_json = analysis_json.replace("<", "\\u003C")
   </nav>
 
   <header class="masthead">
-    <h1 id="doc-title">{{doc['title']}}</h1>
-    <p class="muted">{{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
-    {{len(fix_steps)}} step{{'' if len(fix_steps) == 1 else 's'}},
-    read from a {{image['width']}}&times;{{image['height']}} image.</p>
+    <div class="title-row">
+      <h1 id="doc-title">{{doc['title']}}</h1>
+      <!-- The form is rendered and overlay.js hides it, so with no scripting the title is
+           editable where it stands and the pencil is simply absent.  Hiding it here and
+           revealing it in script would put renaming behind javascript. -->
+      <button type="button" id="rename-toggle" class="rename-toggle js-only"
+              title="Rename this reading" aria-label="Rename this reading">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path fill="currentColor"
+                d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+        </svg>
+      </button>
+      <form action="/a/{{analysis_id}}/rename" method="post" class="rename-form"
+            id="rename-form">
+        <label class="visually-hidden" for="title-input">Title</label>
+        <input type="text" id="title-input" name="title" value="{{doc['title']}}"
+               maxlength="120">
+        <button type="submit">Rename</button>
+      </form>
+    </div>
+    <p class="muted summary-row">
+% if engine['verified']:
+      <span class="badge badge-ok">Checked by Claude</span>
+% else:
+      <span class="badge">Geometry only</span>
+% end
+      {{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
+      {{len(fix_steps)}} step{{'' if len(fix_steps) == 1 else 's'}},
+      read from a {{image['width']}}&times;{{image['height']}} image.</p>
   </header>
 
 % if warnings:
@@ -126,16 +151,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
     to date. The photo is still here.</p>
 % end
 % if engine['verified']:
-    <p><span class="badge badge-ok">Checked by Claude</span>
-    The geometry reading was reviewed against the photo by
+    <p>The geometry reading was reviewed against the photo by
     <strong>{{engine['verifier'] or 'the vision model'}}</strong>, and its corrections applied.</p>
-% else:
-    <p><span class="badge">Geometry only</span>
-    These pitches come from measuring notehead positions against the staff lines. No model has
-    looked at the photo to check them.</p>
-%   if engine['verifier_error']:
+% elif engine['verifier_error']:
     <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
-%   end
 % end
     <div class="provenance-actions">
 % if not engine['verified'] and verify_available:
@@ -154,6 +173,10 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %     end
         <button type="submit" class="secondary">Re-analyze</button>
       </form>
+      <!-- Copying the reading out is a thing you do to the whole reading, like the two
+           above it, so it sits with them rather than over the panels. -->
+      <button type="button" id="copy-button"
+              class="secondary outline js-only">Copy as text</button>
 %     if doc['edits']:
       <p class="muted edits-note">{{len(doc['edits'])}} note(s) corrected by hand.
       Re-analyzing reads the photo again and clears them.</p>
@@ -248,18 +271,11 @@ safe_json = analysis_json.replace("<", "\\u003C")
   </div>
 
   <p id="stage-empty" class="notice notice-warn" hidden></p>
-  <p class="muted stage-hint js-only">Tap a numbered dot to read that step, or use Prev and Next
-  and the arrow keys. Pinch or use + and &minus; to zoom; drag to move around; Fit puts it back.</p>
-
   <!-- One fix panel per step, rendered by the server and all of them present.  overlay.js
        hides every panel but the selected step's, so with scripting off they are all
        simply there, each labelled, and correcting a reading still works: the same
        direction of progressive enhancement the key picker takes. -->
   <section id="fixes" class="fixes">
-    <!-- Copy as text lived in the header of the reading table this section replaced.  It
-         is not part of what was redundant with the labels, so it moves rather than goes. -->
-    <p class="fixes-head"><button type="button" id="copy-button"
-       class="secondary outline js-only">Copy as text</button></p>
 % if fix_steps:
 %   for fix in fix_steps:
     <div class="fix-panel" id="fix-{{fix['number']}}" data-step="{{fix['number']}}">
@@ -306,20 +322,25 @@ safe_json = analysis_json.replace("<", "\\u003C")
           <button type="submit" class="fix-go secondary outline"
                   formaction="/a/{{analysis_id}}/note/pitch">Move</button>
         </span>
-        <span class="fix-buttons" role="group">
 %       for kind, glyph in ACCIDENTAL_BUTTONS:
-          <button type="submit" name="value" value="{{kind}}" class="fix-acc"
-                  title="Make {{note['pretty']}} {{kind}}"
-                  {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
+        <button type="submit" name="value" value="{{kind}}" class="fix-acc"
+                title="Make {{note['pretty']}} {{kind}}"
+                {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
 %       end
-          <button type="submit" class="fix-acc fix-drop"
-                  formaction="/a/{{analysis_id}}/note/delete"
-                  title="Take {{note['pretty']}} out of this chord">&times;</button>
+        <!-- A bin rather than a fourth accidental: removing a notehead is not one of the
+             three things that spell it, and the faint fill says so before the icon does. -->
+        <button type="submit" class="fix-acc fix-drop"
+                formaction="/a/{{analysis_id}}/note/delete"
+                title="Take {{note['pretty']}} out of this chord">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"
+               focusable="false"><path fill="currentColor"
+            d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9zm3 2v9h2v-9H9zm4 0v9h2v-9h-2z"/></svg>
+          <span class="visually-hidden">Remove {{note['pretty']}}</span>
+        </button>
 %       if note['by_hand']:
-          <button type="submit" name="value" value="clear" class="fix-acc fix-clear"
-                  title="Undo the correction on {{note['pretty']}}">undo</button>
+        <button type="submit" name="value" value="clear" class="fix-acc fix-clear"
+                title="Undo the correction on {{note['pretty']}}">undo</button>
 %       end
-        </span>
       </form>
 %       end
       <form action="/a/{{analysis_id}}/note/add" method="post" class="fix-add">
@@ -345,13 +366,6 @@ safe_json = analysis_json.replace("<", "\\u003C")
 
   <section class="manage">
     <h2>This reading</h2>
-    <form action="/a/{{analysis_id}}/rename" method="post" class="rename-form">
-      <label for="title-input">Title</label>
-      <div class="rename-row">
-        <input type="text" id="title-input" name="title" value="{{doc['title']}}" maxlength="120">
-        <button type="submit">Rename</button>
-      </div>
-    </form>
     <p class="file-links">
       <a href="/a/{{analysis_id}}/original">Original photo</a>
       <a href="/a/{{analysis_id}}/processed.png">Straightened image</a>

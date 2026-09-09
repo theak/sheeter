@@ -751,3 +751,66 @@ class TestManualEditing:
         above = text.split('id="viewport"')[0]
         assert 'data-mode="step"' in above and 'data-mode="all"' in above
         assert 'data-mode' not in text.split('id="step-bar"')[1]
+
+    def test_the_state_chip_sits_on_the_summary_line(self, app, saved):
+        """Two states of one field, so one place for it, and the sentence under it said
+        in prose what the chip already says."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        summary = text.split('class="muted summary-row"')[1].split("</p>")[0]
+        assert "Geometry only" in summary and "1 system" in summary
+        assert summary.index("Geometry only") < summary.index("1 system")
+        assert "measuring notehead positions" not in text
+        assert "No model has" not in text
+
+    def test_the_hint_line_is_gone(self, app, saved):
+        """Instructions for controls that are already labelled, and the longest thing on
+        the page above the photo."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert "stage-hint" not in text
+        assert "Tap any label to read that step" not in text
+        assert "drag to move around" not in text
+
+    def test_copy_as_text_sits_with_the_other_whole_reading_actions(self, app, saved):
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        actions = text.split('class="provenance-actions"')[1].split("</section>")[0]
+        assert 'id="copy-button"' in actions
+        assert "Re-analyze" in actions
+
+    def test_renaming_is_at_the_title_and_needs_no_scripting(self, app, saved):
+        """Rendered visible with the pencil hidden, so the overlay hides the form rather
+        than revealing it: with no scripting the title is editable where it stands."""
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        row = text.split('class="title-row"')[1].split("</div>")[0]
+        assert 'id="doc-title"' in row
+        assert 'id="rename-toggle"' in row and "js-only" in row
+        assert 'id="rename-form"' in row and 'name="title"' in row
+        assert 'id="rename-form" hidden' not in text
+        # And it is not still down in the manage section as well.
+        assert text.count('id="title-input"') == 1
+
+    def test_renaming_still_works_from_the_new_place(self, app, saved):
+        status, _headers, _ = call(app, "POST", "/a/%s/rename" % saved,
+                                   {"title": "Old Folks"})
+        assert status.startswith("303")
+        assert store.load(saved)["title"] == "Old Folks"
+
+    def test_removing_a_note_is_a_bin_and_not_a_fourth_accidental(self, app, saved):
+        """Sharp, flat and natural spell a note; the bin takes it away.  Drawn the same
+        as the other three it read as a fourth thing the note could be."""
+        panel = call(app, "GET", "/a/%s" % saved)[2].decode().split('id="fix-1"')[1]
+        drop = panel.split('class="fix-acc fix-drop"')[1].split("</button>")[0]
+        assert "<svg" in drop, "a bin, drawn"
+        assert "×" not in drop and "&times;" not in drop
+        assert "Remove" in drop, "and named for a screen reader, the icon being decorative"
+
+    def test_a_notehead_is_one_row_of_five(self, app, saved):
+        """The menu is the first column, not a line of its own above the buttons, so the
+        four buttons line up down the panel however wide the menus are."""
+        panel = call(app, "GET", "/a/%s" % saved)[2].decode().split('id="fix-1"')[1]
+        row = panel.split('class="fix-note"')[1].split("</form>")[0]
+        assert row.count('class="fix-acc"') == 3, "three spellings"
+        assert row.count("fix-drop") == 1, "and the bin"
+        # The wrapper that made the buttons their own line is gone, so they are children
+        # of the row itself.
+        assert "fix-buttons" not in row
+        assert row.index("fix-pitch") < row.index('class="fix-acc"')

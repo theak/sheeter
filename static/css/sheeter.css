@@ -27,7 +27,7 @@
 .muted { color: var(--pico-muted-color); }
 
 .masthead { margin-bottom: 1.5rem; }
-.masthead h1 { margin-bottom: 0.3rem; }
+.masthead h1 { margin-bottom: 0; }
 .tagline { color: var(--pico-muted-color); margin-bottom: 0; }
 
 .notice {
@@ -397,6 +397,44 @@
 
 /* ---------- tables ---------- */
 
+/* The title and its pencil on one line, with the rename field taking their place when
+   it opens.  [hidden] needs saying for both: Pico gives a button and a flex form a
+   display of their own, which beats the browser's own [hidden] rule. */
+/* nowrap, not wrap.  Wrapping breaks the line before it shrinks anything, so a title
+   wide enough to fill a phone pushed the pencil onto a line of its own however
+   shrinkable the heading was; without wrapping the heading shrinks and wraps its own
+   text instead, and the pencil stays beside it.  min-width: 0 is what allows that. */
+.title-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
+.title-row h1 { margin: 0; flex: 1 1 auto; min-width: 0; }
+.title-row h1[hidden] { display: none; }
+.rename-toggle { flex: none; }
+
+/* No display in this rule on purpose: .js-only has to be able to hide the pencil, and
+   at equal specificity the later rule wins, so setting display here left a button with
+   nothing wired to it on show for anyone without scripting.  The display is stated only
+   under .js, matching the specificity of the .js button.js-only rule it has to beat. */
+.rename-toggle {
+  width: auto;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--pico-muted-color);
+}
+.js button.rename-toggle { display: flex; align-items: center; justify-content: center; }
+.js button.rename-toggle[hidden] { display: none; }
+.rename-toggle:hover { color: var(--pico-primary); border-color: var(--pico-primary); }
+
+.rename-form { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.rename-form[hidden] { display: none; }
+.rename-form input { width: auto; min-width: 12rem; margin: 0; }
+.rename-form button { width: auto; margin: 0; padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+
+/* The state chip reads as part of the line rather than as a block above it. */
+.summary-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
 .manage, .recent { margin-bottom: 2rem; }
 .manage h2, .recent h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
 .table-scroll { overflow-x: auto; }
@@ -408,10 +446,6 @@
 .provenance { margin-bottom: 1.5rem; }
 .provenance p { margin-bottom: 0.5rem; }
 
-.rename-row { display: flex; gap: 0.5rem; }
-.rename-row input { margin: 0; }
-.rename-row button { width: auto; margin: 0; white-space: nowrap; }
-.rename-form { margin-bottom: 1rem; }
 .file-links { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.9rem; }
 .danger { --pico-color: #c0392b; --pico-border-color: #c0392b; }
 
@@ -520,35 +554,45 @@
   color: var(--pico-muted-color);
 }
 
-/* Wraps, so a narrow phone puts the accidentals under the pitch menu instead of
-   pushing them off the side, which is what a table column did. */
+/* One row of five: the pitch menu, then the three spellings, then the bin.  A grid and
+   not flex, because the four buttons should line up down the panel however wide the
+   menu's own contents make it, and the menu takes whatever is left. */
 .fix-note {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(3.5rem, 1fr) repeat(4, 2.75rem);
   align-items: center;
-  flex-wrap: wrap;
   gap: 0.3rem;
   margin-bottom: 0.35rem;
 }
-.fix-pitch, .fix-buttons { display: flex; align-items: center; gap: 0.25rem; }
+.fix-pitch { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
 .fix-pitch select {
   width: auto;
-  min-width: 5.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
-  padding: 0.35rem 1.6rem 0.35rem 0.5rem;
+  padding: 0.35rem 1.4rem 0.35rem 0.5rem;
   font-size: 0.9rem;
 }
+/* Undo belongs to the notehead above it but is not one of the five things you do to it,
+   so it takes its own line rather than becoming a sixth column that shifts the rest. */
+button.fix-clear { grid-column: 1 / -1; justify-self: start; width: auto; }
 /* The no-script path for the pitch menu.  With scripting on, changing the menu submits
    and this is redundant, so overlay.js could hide it -- it does not, because a visible
    button is also the answer for anyone who changes a select with the keyboard. */
-.fix-go, .fix-add button { width: auto; margin: 0; padding: 0.35rem 0.6rem;
+/* Every width in this section names the element as well as the class.  Pico sizes
+   button[type=submit] at 100%, which is one more specificity point than a bare class
+   has, so .fix-acc { width: auto } never applied at all: it went unnoticed on the
+   buttons that sit in a fixed column and filled it harmlessly, and showed up on undo,
+   which spans the row and stretched right across it. */
+button.fix-go, .fix-add button { width: auto; margin: 0; padding: 0.35rem 0.6rem;
   font-size: 0.8rem; }
 /* Pico gives a button display:block, which beats the browser's own [hidden] rule, so
    hiding Move needs saying here or the attribute does nothing. */
-.fix-go[hidden] { display: none; }
+button.fix-go[hidden] { display: none; }
 
 /* Big enough to hit with a thumb, which is what this app is for: 44px is the usual
    floor for a touch target and an accidental glyph is a small thing to aim at. */
-.fix-acc {
+button.fix-acc {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -567,15 +611,22 @@
      reason. */
   color: var(--pico-primary);
 }
-.fix-acc[aria-current="true"] {
+button.fix-acc[aria-current="true"] {
   background: var(--pico-primary);
   border-color: var(--pico-primary);
   color: var(--pico-primary-inverse);
 }
-.fix-clear { font-size: 0.7rem; min-width: 3rem; }
-/* Removing a notehead is not one of the three things that spell it, so it does not
-   read as a fourth accidental. */
-.fix-drop { color: var(--pico-del-color, #b3261e); font-size: 1.3rem; }
+button.fix-clear { font-size: 0.7rem; min-width: 3rem; padding: 0 0.6rem; }
+
+/* The bin is the one button here that takes something away, so it is not drawn like the
+   three that spell a note: a faint fill that reads as a different kind of control before
+   the icon is even looked at, and the sectioning colour rather than a grey of my own so
+   it stays faint in a dark scheme too. */
+button.fix-drop {
+  color: var(--pico-del-color, #b3261e);
+  background: var(--pico-card-sectioning-background-color);
+}
+button.fix-drop:hover { border-color: var(--pico-del-color, #b3261e); }
 
 .fix-add {
   display: flex;

@@ -268,9 +268,11 @@ Four things go wrong often enough to be worth correcting by eye rather than by r
 photo: the reader invents a chord that is not there, usually out of a barline or a slanted beam; it
 misses an accidental fused with the notehead it belongs to; it reads a notehead a space off; and it
 misses a notehead, or a whole hand, entirely. So selecting a step shows a fix panel under the
-photo, and the panel holds, for every notehead of that chord, a menu of the staff positions it
-could be on, a sharp, flat and natural button, and a cross to take it out of the chord; then an
-"add a note" menu for each hand, and one button to delete the whole chord.
+photo. Every notehead of that chord gets one row of five: a menu of the staff positions it could
+be on, then sharp, flat and natural, then a bin to take it out of the chord. The bin carries a
+faint fill, because it is the one button in the row that takes something away rather than spelling
+what is there, and that reads before the icon does. Then an "add a note" menu for each hand, and
+one button to delete the whole chord.
 
 The accidental in force is the one marked, and that is the note's alteration rather than only what
 is printed in front of it: a note the key signature sharpens shows sharp, because that is what it
@@ -283,6 +285,18 @@ you had just finished correcting. "Move" applies a pitch picked from the menu an
 the menu is actually changed, so it is not a button asking to be puzzled over on every notehead at
 once. The overlay hides it rather than revealing it, which is what keeps the menu submittable with
 no scripting.
+
+The title is renamed where it is written, behind a pencil beside it, and the state of the reading
+is a chip on the line under it rather than a paragraph of its own: "Geometry only" said in prose
+what the chip already said. Renaming follows the same rule as everything else here, being rendered
+in the page and hidden by the overlay, so with no scripting the title is editable where it stands
+and the pencil is not offered at all.
+
+One trap worth knowing before adding a width to any of these controls: Pico sizes
+`button[type=submit]` at 100%, and an attribute selector outranks a bare class, so
+`.some-button { width: auto }` silently does nothing. Every width in that part of the stylesheet
+names the element as well as the class for that reason. It went unnoticed on the buttons that sit
+in a fixed column and filled it harmlessly, and showed up on "undo", which spans its row.
 
 The panel replaced two things that said what the labels on the photo already say: a step detail
 that read the selected chord back in prose, and a table of the whole reading underneath it. The
