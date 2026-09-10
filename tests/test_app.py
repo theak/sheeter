@@ -894,6 +894,35 @@ JSON = "application/json"
 BROWSER = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
 
+class TestStackedNames:
+    """The step across a stacked chord label, which reads bottom left to top right.
+
+    Only in here because there is nowhere better: the effect is a margin the browser
+    computes, and this suite reads files.  It is worth a test all the same, because it
+    broke silently and no assertion anywhere noticed.
+    """
+
+    def test_the_step_is_set_before_anything_draws_a_label(self, app):
+        """The bug this is here for, which was invisible twice over.
+
+        Turning the label build into buildOverlay() so a correction could redraw it
+        moved the call above the line that gives NAME_STEP_PX its value.  A var is
+        hoisted and its value is not, so the constant was undefined when the labels were
+        first drawn, every margin came out "NaNpx", and that is an invalid CSS value the
+        browser drops without complaint.  The labels were flush at load and staggered
+        again the moment an edit rebuilt them, which is a thing to notice by eye and
+        nothing else.
+        """
+        overlay = call(app, "GET", "/static/js/overlay.js")[2].decode()
+        assert overlay.index("var NAME_STEP_PX =") < overlay.index("!buildOverlay()"), \
+            "NAME_STEP_PX has to have its value before the first build reads it"
+
+    def test_the_step_is_four_pixels(self, app):
+        overlay = call(app, "GET", "/static/js/overlay.js")[2].decode()
+        assert "var NAME_STEP_PX = 4;" in overlay
+        assert "(above * NAME_STEP_PX) + 'px'" in overlay
+
+
 class TestInstantEditing:
     """A correction the overlay applies in place, instead of reloading the page.
 
