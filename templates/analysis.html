@@ -48,6 +48,7 @@ for system in doc["systems"]:
                     # "G# 4" not "G#4", the same spacing overlay.js uses on the labels.
                     "pretty": re.sub(r"(\d+)$", r" \1", note["pretty"]),
                     "step": step,
+                    "midi": note["midi"],
                     "current": ALTER_BUTTON.get(note["alter"], ""),
                     "by_hand": corrected,
                 })
@@ -283,16 +284,24 @@ safe_json = analysis_json.replace("<", "\\u003C")
       <p class="muted">Nothing read on this staff here.</p>
 %       end
 %       for note in hand['notes']:
-      <!-- One form per notehead, not one per button: every control here names the same
-           notehead, so they share the hidden inputs and each button points itself at the
-           route it wants with formaction.  Five forms a note repeated the same four
-           indices five times over and put 36KB of it on a thirteen step page. -->
+%       # One form per notehead, not one per button: every control here names the same
+%       # notehead, so they share the hidden inputs and each button points itself at the
+%       # route it wants with formaction.  Five forms a note repeated the same four
+%       # indices five times over and put 36KB of it on a thirteen step page.  A "%"
+%       # comment and not an HTML one for the same reason: a comment in the markup is
+%       # emitted, and this loop runs once per notehead.
       <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
         <input type="hidden" name="system" value="{{fix['system']}}">
         <input type="hidden" name="event" value="{{fix['event']}}">
         <input type="hidden" name="staff" value="{{hand['staff']}}">
         <input type="hidden" name="note" value="{{note['position']}}">
         <input type="hidden" name="step_number" value="{{fix['number']}}">
+%       # Point at this, tap it, or tab to it and press Enter, to hear this note on its
+%       # own.  Nothing but overlay.js can make it work, so the column it sits in is only
+%       # cut into the row by a class overlay.js adds.
+        <button type="button" class="fix-hear" data-midi="{{note['midi']}}"
+                title="Hear {{note['pretty']}}"><span
+          class="visually-hidden">Hear {{note['pretty']}}</span></button>
         <span class="fix-pitch">
           <label class="visually-hidden"
                  for="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}">Which note {{note['pretty']}} is</label>
@@ -301,8 +310,8 @@ safe_json = analysis_json.replace("<", "\\u003C")
             <option value="{{choice['step']}}"{{!' selected' if choice['step'] == note['step'] else ''}}>{{choice['pretty']}}</option>
 %         end
           </select>
-          <!-- Rendered visible: overlay.js hides it until the menu is actually changed,
-               so with no scripting the menu keeps the submit button it needs. -->
+%         # Rendered visible: overlay.js hides it until the menu is actually changed,
+%         # so with no scripting the menu keeps the submit button it needs.
           <button type="submit" class="fix-go secondary outline"
                   formaction="/a/{{analysis_id}}/note/pitch">Move</button>
         </span>
@@ -311,8 +320,8 @@ safe_json = analysis_json.replace("<", "\\u003C")
                 title="Make {{note['pretty']}} {{kind}}"
                 {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
 %       end
-        <!-- A bin rather than a fourth accidental: removing a notehead is not one of the
-             three things that spell it, and the faint fill says so before the icon does. -->
+%       # A bin rather than a fourth accidental: removing a notehead is not one of the
+%       # three things that spell it, and the faint fill says so before the icon does.
         <button type="submit" class="fix-acc fix-drop"
                 formaction="/a/{{analysis_id}}/note/delete"
                 title="Take {{note['pretty']}} out of this chord">

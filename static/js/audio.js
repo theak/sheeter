@@ -117,11 +117,22 @@
     return muted;
   }
 
+  // Whether a note played this instant would actually be heard.  A hover is not a user
+  // gesture, so it can neither build the context nor resume a suspended one, and a note
+  // scheduled against a suspended context is not lost: currentTime does not advance, so
+  // every one of them waits and lands together the moment a later click resumes it.  A
+  // handful of previews arriving at once as a chord is worse than silence, so overlay.js
+  // asks this before playing anything a moving mouse asked for.
+  function live() {
+    return !!context && context.state === 'running';
+  }
+
   window.SheeterAudio = {
     // False on anything without Web Audio, which is overlay.js's cue to not offer a
     // mute button for a thing that was never going to make a sound.
     supported: !!Ctx,
     play: play,
+    live: live,
     setMuted: setMuted,
     stop: function () { if (context) { hush(context.currentTime); } }
   };
