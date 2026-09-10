@@ -123,6 +123,16 @@
   var pills = [];
   var marks = [];
 
+  //: How far each name in a stacked chord label steps right of the one below it.  Up
+  //: here, and not down in the label section with the code that reads it, because the
+  //: build below runs while this file is still being evaluated: a var is hoisted but its
+  //: value is not, so a constant declared further down is undefined when the labels are
+  //: first drawn.  That is not an error either.  It made every margin "NaNpx", which is
+  //: an invalid CSS value and silently dropped, so the labels came out flush at load and
+  //: staggered again the moment an edit rebuilt them.  Anything else buildOverlay reads
+  //: has to be assigned above this line for the same reason.
+  var NAME_STEP_PX = 4;
+
   // Everything drawn over the photo, built from the document as it stands and thrown
   // away and built again when a correction lands.  Rebuilt rather than patched because
   // an edit can rename the chord, move a notehead to another staff position or take one
@@ -235,8 +245,6 @@
       marks.push(mark);
     });
   }
-
-  var NAME_STEP_PX = 4;
 
   function makePill(className, tagText, lines, step, anchor) {
     var pill = el('button', 'pill ' + className);
