@@ -361,6 +361,11 @@ each button pointing itself at its route with `formaction`, because five forms a
 the same four indices five times and put 36KB of it on a thirteen-step page. The whole page is
 164KB there, 9KB gzipped, being almost entirely repeated pitch menus.
 
+The comments inside that loop are `%` comments rather than HTML ones, for the same reason: a
+comment in the markup is emitted, and three of them once per notehead came to 98KB of the 772KB a
+fifty-chord page weighed, 2KB of the 28KB it gzipped to. They are the only comments here that are
+not written in HTML, and that is what the `%` is saying.
+
 ### Hearing the chords
 
 Selecting a step plays it, which for someone who knows what a chord sounds like but not what it
