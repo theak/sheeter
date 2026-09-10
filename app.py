@@ -387,10 +387,10 @@ def _edit(analysis_id, change, fields):
         # A form naming indices that are not there, or a reading that left the store
         # while this ran.  Either way the page in front of the reader is not this one.
         return {"reload": True}
-    return _panels_for(analysis_id, before, latest)
+    return _panels_for(analysis_id, before, latest, target)
 
 
-def _panels_for(analysis_id, before, document):
+def _panels_for(analysis_id, before, document, target):
     """The panels a correction moved, rendered, for the overlay to swap in place.
 
     Only the ones that moved, which is the point: on a dense page the panels are 86% of
@@ -401,21 +401,46 @@ def _panels_for(analysis_id, before, document):
 
     Asking for the accidental a note already sounds moves nothing, and then this sends no
     panels at all rather than pretending something happened.
+
+    A chord that went is named as well, in "deleted".  What it renumbers is not sent: the
+    overlay stamps the new step numbers and event indices onto the panels it already has,
+    from the reading below, which is the only thing that knows them.
     """
     after = panels.fix_steps(document)
-    if len(after) != len(before):
-        # A chord went, so every step after it renumbers, and with it every panel's
-        # heading and the indices in every one of its forms.  Sending all of them costs
-        # more than the page does, and doing that renumbering in the browser as well as
-        # here is two places to get it wrong, in a form that posts at a chord by index.
+    gone = None
+    if len(after) == len(before) - 1:
+        gone = _step_that_went(before, target)
+        if gone is None:
+            return {"reload": True}
+        moved = panels.changed_after_delete(before, after, gone)
+    elif len(after) == len(before):
+        moved = panels.changed_panels(before, after)
+    else:
+        # Nothing here removes two chords at once.  If something ever does, the page it
+        # comes back with is right and a guess at how to patch this one would not be.
         return {"reload": True}
-    return {
+
+    answer = {
         "document": document,
         "panels": dict(
             (str(number), template("fix_panel.html", fix=after[number - 1],
                                    analysis_id=analysis_id, total=len(after)))
-            for number in panels.changed_panels(before, after)),
+            for number in moved),
     }
+    if gone is not None:
+        answer["deleted"] = gone
+    return answer
+
+
+def _step_that_went(before, target):
+    """Which step a chord delete removed, as it was numbered before it went.
+
+    The event a correction named, since deleting a chord names it directly and removing
+    the last notehead of the last hand takes that same chord with it.
+    """
+    system_index, event_index = target[0], target[1]
+    return next((row["number"] for row in before
+                 if row["system"] == system_index and row["event"] == event_index), None)
 
 
 def _edit_target(fields):

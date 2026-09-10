@@ -396,14 +396,34 @@ swapped into the page differing from the panel that page would have been served.
 javascript instead would be every button, title and label written twice in two languages, and one
 of the two would drift.
 
-Three things come back as a plain reload instead. A step count that moved, which is a chord
-deleted, or the last notehead of the last hand removed: every step after it renumbers, and so does
-every index in every one of their forms, and doing that arithmetic in the browser as well as here
-is two places for a form to start posting at the wrong chord. A reading that left the store while
-the edit ran. And any trouble at all: a status, a body that will not parse, a dropped connection.
-Never a re-post of the form, which looks like the safe fallback and is not: after a chord has gone
-the events are renumbered, so a replayed post lands on a different one. Worst case the reader
-presses the button again.
+Deleting a chord lands in place too, and it takes one more idea, because it renumbers. Every step
+after the cut moves down one, and with it that panel's heading, the step each of its forms names and
+the event index each of them posts at, since an event's index is its position and the reading
+renumbers them when one goes. Sending all those panels back costs more than the page does. Doing the
+subtraction in the browser is worse than it sounds: get it wrong and a form quietly posts at the
+chord next door, which corrupts a reading rather than looking broken.
+
+So neither happens. The reading that comes back already says what every step now is, and the panels
+sit in the same order as the steps in it, so the browser walks the two together and copies: panel
+one is step one, and it takes its number, its heading and its indices from there. No arithmetic to
+get wrong, and the same reading the labels are rebuilt from. What is sent is the reading and which
+step went, and usually not one panel: deleting each of the 53 chords of `justfriends.png` in turn,
+no surviving panel's content ever changed, only the indices. Only ever changed is not the same as
+cannot change, though. Deleting a chord re-names all of them, and a chord's name can depend on what
+that hand played before it, so the comparison still runs, ignoring the indices the browser stamps,
+and any panel that really did go stale comes back rendered.
+
+That is what the two numbers in "Step 3 of 53" are wrapped in spans for, and the spans in one
+wrapper because the heading is a flex row with a gap, so four loose text runs in it would come apart
+into "Step  3  of  53". It costs 5.9KB on the 53-step page, and it keeps the sentence written in one
+place rather than once in the template and once in javascript.
+
+Two things still come back as a plain reload. A reading that left the store while the edit ran. And
+any trouble at all: a status, a body that will not parse, a dropped connection. Never a re-post of
+the form, which looks like the safe fallback and is not: after a chord has gone the events are
+renumbered, so a replayed post lands on a different one. Worst case the reader presses the button
+again. A delete that empties the page is a reload as well, since a reading with no noteheads has its
+own thing to say and the server says it properly.
 
 One correction at a time, too. The page reload used to serialize them for free, since there was no
 clicking again before it came back, and writing an edit back is read, splice, write: two in flight

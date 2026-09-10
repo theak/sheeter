@@ -962,7 +962,7 @@ class TestInstantEditing:
         assert len(answer["panels"]) == 2
         for number, markup in answer["panels"].items():
             assert markup in page, "panel %s is not what the page renders" % number
-            assert "of 2" in markup
+            assert 'class="fix-of">2<' in markup
 
     def test_an_accidental_sends_the_panels_it_carries_to(self, app, saved_pair):
         """It holds to the end of its measure, so the later chord at that staff position
@@ -1001,28 +1001,62 @@ class TestInstantEditing:
 
     # ---------------------------------------------------------------- reload instead
 
-    def test_deleting_a_chord_asks_for_a_reload(self, app, saved_pair):
-        """Every step after it renumbers, and so does every index in every one of their
-        forms.  Sending them all costs more than the page, and doing that arithmetic in
-        the browser as well as here is two places for a form to start posting at the
-        wrong chord."""
+    def test_deleting_a_chord_names_the_step_that_went(self, app, saved_pair):
+        """A chord going renumbers every step after it, and with it the heading and the
+        indices in every one of their forms.  None of that is sent: the overlay stamps
+        it onto the panels it has, from the reading, which is the only thing that knows
+        what each step is now.  So the answer is the reading and which step went.
+        """
         status, _headers, body = call(app, "POST", "/a/%s/chord/delete" % saved_pair,
                                       {"system": "0", "event": "0",
                                        "step_number": "1"}, accept=JSON)
         assert status.startswith("200")
-        assert json.loads(body) == {"reload": True}
+        answer = json.loads(body)
+        assert answer["deleted"] == 1
+        assert answer["panels"] == {}, "the survivors differ only in what is stamped"
+        assert len(answer["document"]["systems"][0]["events"]) == 1
         assert len(store.load(saved_pair)["systems"][0]["events"]) == 1
 
-    def test_emptying_a_chord_by_removing_notes_asks_for_a_reload(self, app, saved):
-        """Taking the last notehead off the last staff takes the chord with it, so the
-        same rule catches it: the step count moved, so the page comes back."""
+    def test_the_reading_says_what_the_renumbered_steps_are(self, app, saved_pair):
+        """Which is what the overlay stamps from, so it has to be in the answer rather
+        than left for the browser to work out by subtracting one."""
+        answer = json.loads(call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                 {"system": "0", "event": "0", "step_number": "1"},
+                                 accept=JSON)[2])
+        events = answer["document"]["systems"][0]["events"]
+        assert [event["index"] for event in events] == [0], \
+            "the surviving chord is event 0 now, not event 1"
+
+    def test_deleting_the_second_chord_leaves_the_first_alone(self, app, saved_pair):
+        """Nothing before the cut is renumbered, so nothing about it moves."""
+        answer = json.loads(call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                 {"system": "0", "event": "1", "step_number": "2"},
+                                 accept=JSON)[2])
+        assert answer["deleted"] == 2
+        assert answer["panels"] == {}
+
+    def test_emptying_a_chord_by_removing_notes_names_it_too(self, app, saved):
+        """Taking the last notehead off the last staff takes the chord with it, so a
+        note delete can be a chord delete and is answered as one."""
         for _ in range(2):
             answer = self.answer(app, saved, path="/note/delete", note="0")
-            assert "reload" not in answer
-        status, _headers, body = call(app, "POST", "/a/%s/note/delete" % saved,
-                                      self.form(note="0"), accept=JSON)
-        assert json.loads(body) == {"reload": True}
-        assert store.load(saved)["systems"][0]["events"] == []
+            assert "deleted" not in answer
+        answer = self.answer(app, saved, path="/note/delete", note="0")
+        assert answer["deleted"] == 1
+        assert answer["document"]["systems"][0]["events"] == []
+
+    def test_a_chord_delete_naming_a_chord_that_is_not_there_moves_nothing(
+            self, app, saved_pair):
+        """A stale form, which is not a fault: nothing was deleted, so nothing moved and
+        no step is named as gone.  The overlay leaves the page as it is."""
+        status, _headers, body = call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                      {"system": "0", "event": "9",
+                                       "step_number": "1"}, accept=JSON)
+        assert status.startswith("200")
+        answer = json.loads(body)
+        assert answer["panels"] == {}
+        assert "deleted" not in answer
+        assert len(store.load(saved_pair)["systems"][0]["events"]) == 2
 
     def test_a_form_naming_nothing_real_asks_for_a_reload(self, app, saved):
         status, _headers, body = call(app, "POST", "/a/%s/note" % saved,

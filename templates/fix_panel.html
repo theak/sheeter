@@ -1,5 +1,11 @@
 <% from sheeter.panels import ACCIDENTAL_BUTTONS %>
-      <h2>Step {{fix['number']}} of {{total}}<span class="fix-symbol">{{fix['symbol']}}</span></h2>
+%     # One wrapper round the count, not four spans loose in the h2: the h2 is a flex
+%     # row with a gap, so every text run in it is an item of its own and the sentence
+%     # would come apart into "Step  3  of  53".  Inside the wrapper it is ordinary
+%     # inline text, and overlay.js has the two numbers to stamp when a deleted chord
+%     # renumbers the steps without the page being fetched again.
+      <h2><span class="fix-count">Step <span class="fix-n">{{fix['number']}}</span> of <span
+        class="fix-of">{{total}}</span></span><span class="fix-symbol">{{fix['symbol']}}</span></h2>
 %     if fix['common_name']:
       <p class="common-name">{{fix['common_name']}}</p>
 %     end

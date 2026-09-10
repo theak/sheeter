@@ -93,8 +93,38 @@ def fix_steps(doc):
 def changed_panels(before, after):
     """The step numbers whose row moved, given the rows from before and after an edit.
 
-    Positional, and that is safe rather than lucky: a panel's markup is a pure function of
-    its row, and anything that changes how many steps there are reloads the page instead
-    of coming through here, so the two lists are the same length and the same steps.
+    Positional, and that is safe rather than lucky: a panel's markup is a pure function
+    of its row, and the two lists are the same length because every edit that changes
+    how many steps there are goes through :func:`changed_after_delete` instead.
     """
     return [row["number"] for row, was in zip(after, before) if row != was]
+
+
+#: What a panel embeds that a deleted chord shifts, and that the browser sets from the
+#: reading it is handed rather than working out.  Deleting a chord renumbers every step
+#: after it, so the heading, the step each form names and the event index each form posts
+#: all move; none of that is a reason to send the panel again, since the reading already
+#: says what each step now is and the panels are in the same order as the steps in it.
+STAMPED_FIELDS = ("number", "system", "event")
+
+
+def _content(row):
+    """A row without the indices, which is everything its markup says on its own."""
+    return dict((key, value) for key, value in row.items()
+                if key not in STAMPED_FIELDS)
+
+
+def changed_after_delete(before, after, gone):
+    """:func:`changed_panels` for an edit that removed step *gone* (1-based).
+
+    Its row comes out of *before* so the two line up again, and the comparison ignores
+    the indices the browser stamps.  Usually empty, and it is worth being clear about
+    why this is not simply assumed to be: deleting a chord re-names all of them, and a
+    chord's name can depend on what that hand played before it, so a delete could in
+    principle re-name its neighbour.  Deleting each of the 53 chords of the page in
+    tests/pages/justfriends.png in turn never did, but "never on one page" is not the
+    same as "cannot", and a panel that went stale in that way would be silently wrong.
+    """
+    survivors = before[:gone - 1] + before[gone:]
+    return [row["number"] for row, was in zip(after, survivors)
+            if _content(row) != _content(was)]

@@ -683,10 +683,70 @@
   var busy = false;
 
   function editForm(target) {
-    // Deleting a chord is deliberately not here.  It renumbers every step after it, so
-    // the answer to it is a reload, and letting the form post normally is that reload
-    // without a round trip to be told so.
-    return (target && target.closest) ? target.closest('.fix-note, .fix-add') : null;
+    return (target && target.closest)
+      ? target.closest('.fix-note, .fix-add, .fix-delete')
+      : null;
+  }
+
+  function fieldValue(form, name) {
+    var field = form.querySelector('input[name="' + name + '"]');
+    return field ? field.value : '';
+  }
+
+  function setField(form, name, value) {
+    var field = form.querySelector('input[name="' + name + '"]');
+    if (field) { field.value = String(value); }
+  }
+
+  function setNumber(panel, selector, value) {
+    var node = panel.querySelector(selector);
+    if (node) { node.textContent = String(value); }
+  }
+
+  // Take out the panel of a chord that has gone.  The list of panels is taken again
+  // rather than left holding a node that is no longer in the page.
+  function dropPanel(number) {
+    var panel = fixPanel(number);
+    if (panel && panel.parentNode) { panel.parentNode.removeChild(panel); }
+    panels = fixes.querySelectorAll('.fix-panel');
+  }
+
+  // What every panel now says it is.  A chord going renumbers every step after it, and
+  // with it each panel's heading, the step each of its forms names, and the event index
+  // each of them posts at.  None of that is worked out here: the reading that came back
+  // already says what each step is, and the panels are in the same order as the steps in
+  // it, so panel i is step i and is stamped from it.  A sum done here and there would be
+  // two places to get it wrong, and getting it wrong is a form quietly posting at the
+  // chord next door, so this is a copy rather than a sum.
+  function renumberPanels() {
+    var many = Math.min(panels.length, steps.length);
+    for (var i = 0; i < many; i++) {
+      var panel = panels[i];
+      var step = steps[i];
+      panel.id = 'fix-' + step.number;
+      panel.dataset.step = String(step.number);
+      setNumber(panel, '.fix-n', step.number);
+      setNumber(panel, '.fix-of', steps.length);
+      var forms = panel.querySelectorAll('form');
+      for (var f = 0; f < forms.length; f++) {
+        setField(forms[f], 'step_number', step.number);
+        setField(forms[f], 'system', step.system.index);
+        setField(forms[f], 'event', step.event.index);
+      }
+    }
+  }
+
+  function swapPanels(sent) {
+    var numbers = Object.keys(sent || {});
+    for (var i = 0; i < numbers.length; i++) {
+      var panel = fixPanel(numbers[i]);
+      // innerHTML, so the .fix-panel itself is never replaced: it carries which step it
+      // is and whether it is showing, and the list of panels points at it.
+      if (panel) {
+        panel.innerHTML = sent[numbers[i]];
+        armPitchMenus(panel);
+      }
+    }
   }
 
   function fixPanel(step) {
@@ -781,19 +841,8 @@
   // caused it, which the server has no business being told: which panel and hand it was
   // in, what that hand was sounding beforehand, and which control was pressed.
   function applyEdit(answer, asked) {
-    var numbers = Object.keys(answer.panels || {});
-    for (var i = 0; i < numbers.length; i++) {
-      var panel = fixPanel(numbers[i]);
-      // innerHTML, so the .fix-panel itself is never replaced: overlay.js took its list
-      // of panels once, and each one carries which step it is and whether it is showing.
-      if (panel) {
-        panel.innerHTML = answer.panels[numbers[i]];
-        armPitchMenus(panel);
-      }
-    }
-    syncHear();
-    showEditCount(answer.document);
-
+    // The reading first, since everything after it is stamped or drawn from the reading
+    // and not from what was in the page a moment ago.
     doc = window.SHEETER_DATA = answer.document;
     systems = doc.systems || [];
     if (!buildOverlay()) {
@@ -802,10 +851,27 @@
       window.location.reload();
       return;
     }
+
+    // Before the panels are swapped, not after: a chord going renumbers the steps, and
+    // the panels the server sent are named by what they are now.  Swapping first would
+    // look them up by their new numbers while the page still had the old ones on, and
+    // put a panel in the wrong place.
+    if (answer.deleted) {
+      dropPanel(answer.deleted);
+      renumberPanels();
+    }
+    swapPanels(answer.panels);
+    syncHear();
+    showEditCount(doc);
+
     // Not fromUser, which would play the whole chord: the chord did not ask to be heard,
     // one note of it did, and that is the next thing below.
     select(Math.min(selected || 1, steps.length), 'hold', false);
-    if (asked.heard) {
+
+    // Nothing to hear when a chord went, and nothing safe to look for either: the step
+    // number the click carried now belongs to whichever chord moved up into it, so the
+    // pitches there are a different chord's and are not this edit's to play.
+    if (asked.heard && !answer.deleted) {
       var midi = newNote(asked.heard, handMidis(asked.step, asked.staff));
       if (midi !== null) {
         playNote(midi);
@@ -818,6 +884,11 @@
     fixes.addEventListener('submit', function (e) {
       var form = editForm(e.target);
       if (!form) { return; }
+      // Something has already said no: the chord delete asks for a confirmation from an
+      // inline onsubmit, and cancelling it prevents the default without stopping the
+      // event getting here.  Without this, saying no to the dialog would delete the
+      // chord anyway, by fetch.
+      if (e.defaultPrevented) { return; }
       if (busy) { e.preventDefault(); return; }
       var submitter = e.submitter;
       // The pressed button's own formaction, and only when it has one.  With the
@@ -869,11 +940,6 @@
         window.location.reload();
       });
     });
-  }
-
-  function fieldValue(form, name) {
-    var field = form.querySelector('input[name="' + name + '"]');
-    return field ? field.value : '';
   }
 
   // fromUser says a person asked for this step, as opposed to the page settling itself.

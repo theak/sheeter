@@ -151,6 +151,58 @@ class TestWhichPanelsMoved:
         assert panels.changed_panels(before, panels.fix_steps(doc)) == []
 
 
+class TestWhatADeleteMoves:
+    """A chord going renumbers every step after it, so comparing rows by position would
+    call every one of them changed.  The row that went comes out first, and the indices
+    are ignored because the browser stamps those from the reading."""
+
+    @staticmethod
+    def gone(before, si, ei):
+        return next(r["number"] for r in before
+                    if r["system"] == si and r["event"] == ei)
+
+    def test_a_deleted_chord_moves_nothing_about_the_survivors(self, doc):
+        before = panels.fix_steps(doc)
+        step = self.gone(before, 0, 0)
+        assert pipeline.delete_event(doc, 0, 0)
+        after = panels.fix_steps(doc)
+        assert len(after) == len(before) - 1
+        assert panels.changed_after_delete(before, after, step) == []
+
+    def test_the_survivors_do_renumber_though(self, doc):
+        """Which is the thing the browser stamps, and the reason it can: the rows say
+        what each step now is, so nothing has to be worked out by subtracting one."""
+        assert pipeline.delete_event(doc, 0, 0)
+        rows = panels.fix_steps(doc)
+        assert [row["number"] for row in rows] == [1, 2]
+        assert [row["event"] for row in rows] == [0, 1], "events renumber with them"
+
+    def test_deleting_the_last_chord_moves_nothing_either(self, doc):
+        before = panels.fix_steps(doc)
+        step = self.gone(before, 0, 2)
+        assert pipeline.delete_event(doc, 0, 2)
+        assert panels.changed_after_delete(before, panels.fix_steps(doc), step) == []
+
+    def test_it_still_reports_a_survivor_whose_content_moved(self, doc):
+        """The case this exists for rather than the case it usually sees.  Deleting a
+        chord re-names all of them, and a chord's name can depend on what the hand
+        played before it, so a survivor's panel could go stale; standing in for that
+        here with a hand correction, since the point is that the comparison catches a
+        content change at all and not that a delete is what caused this one."""
+        before = panels.fix_steps(doc)
+        step = self.gone(before, 0, 0)
+        assert pipeline.set_accidental(doc, 0, 2, 0, 0, value="sharp")
+        assert pipeline.delete_event(doc, 0, 0)
+        after = panels.fix_steps(doc)
+        assert panels.changed_after_delete(before, after, step) == [2]
+
+    def test_the_indices_are_what_it_ignores(self, doc):
+        """Stated directly, because everything above depends on it."""
+        rows = panels.fix_steps(doc)
+        assert set(panels.STAMPED_FIELDS) < set(rows[0])
+        assert "hands" not in panels.STAMPED_FIELDS
+
+
 class TestTheNoteThatChanged:
     """One pitch arrives and at most one leaves, which is what lets the overlay play the
     note an edit just made without being told which row it was in.  Settling a chord
