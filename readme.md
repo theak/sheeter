@@ -277,8 +277,8 @@ Four things go wrong often enough to be worth correcting by eye rather than by r
 photo: the reader invents a chord that is not there, usually out of a barline or a slanted beam; it
 misses an accidental fused with the notehead it belongs to; it reads a notehead a space off; and it
 misses a notehead, or a whole hand, entirely. So selecting a step shows a fix panel under the
-photo. Every notehead of that chord gets one row of five: a menu of the staff positions it could
-be on, then sharp, flat and natural, then a bin to take it out of the chord. The bin carries a
+photo. Every notehead of that chord gets one row: a play button, a menu of the staff positions it
+could be on, then sharp, flat and natural, then a bin to take it out of the chord. The bin carries a
 faint fill, because it is the one button in the row that takes something away rather than spelling
 what is there, and that reads before the icon does. Then an "add a note" menu for each hand, and
 one button to delete the whole chord.
@@ -386,6 +386,42 @@ built inside the first click, which is both what the autoplay rules want and why
 while it loads. Each chord cuts the one before it, so holding an arrow key steps rather than
 smears. Where there is no Web Audio the button is hidden rather than left there doing nothing.
 
+### Hearing one note of a chord
+
+Every note in a fix panel has a play button at the left of its row, next to the pitch menu that
+names it. Point at it with a mouse, tap it with a thumb, or tab to it and press Enter, and that one
+note sounds on its own, with whatever was ringing cut first. Nothing else moves: the step stays
+where it was and the panel is not touched.
+
+They are in the panel and not on the labels over the photo, which is where they were first tried,
+because the panel is the part of this page that has room. A label with six notes stacked in it is
+60px across on a phone, so a mark in front of each name is about 5px wide in a row 10px tall, and a
+tap that close to a button is handed to the button by the browser's own touch adjustment before any
+of this code sees it: the marks looked tappable and selected the step instead. A panel row is
+already thumb sized, so the same button works for a pointer, a finger and the keyboard, and the
+overlay stays as crowded as it was and no more.
+
+The glyph is a triangle in CSS rather than an icon, since a thirteen-step page carries one of these
+per notehead and none of them needs markup of its own. The column it sits in is only cut into the
+row by a class overlay.js adds, so with no scripting, or no Web Audio, the row is the five columns
+it always was rather than five and an empty gap. With the sound off the buttons are disabled rather
+than hidden, so the row keeps its shape and each one stops answering to a pointer instead of
+answering with silence; the tooltip then says to turn the sound on.
+
+Two things worth knowing about the pointer handling.
+
+**A hover cannot start the audio context.** Moving a mouse is not a user gesture, so it can neither
+build the context nor resume a suspended one, and a note scheduled against a suspended context is
+not lost but queued: `currentTime` does not advance, so a few hovers would all sound together the
+moment a later click resumed it. `SheeterAudio.live()` reports whether the context is running and
+the hover path plays nothing until it is. In practice that means the first hover on a freshly loaded
+page is silent, and any click, including one on the button itself, is the way in.
+
+**The hover runs off `pointermove`, not `pointerover`,** which is the obvious choice and the wrong
+one. Scrolling moves rows under a cursor that is standing still, and the browser reports that as the
+pointer arriving over each of them in turn, so a page scrolled with the pointer resting over this
+column would play its way down the chord. Only real movement reaches the handler, and remembering
+the last button turns the stream of moves back into "arrived at a new one".
 
 ### Configuration
 

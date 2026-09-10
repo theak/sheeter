@@ -559,15 +559,23 @@
   color: var(--pico-muted-color);
 }
 
-/* One row of five: the pitch menu, then the three spellings, then the bin.  A grid and
-   not flex, because the four buttons should line up down the panel however wide the
-   menu's own contents make it, and the menu takes whatever is left. */
+/* One row of five: the pitch menu, then the three spellings, then the bin, with a sixth
+   column for the play button cut in below where there is anything to play with.  A grid
+   and not flex, because the buttons should line up down the panel however wide the menu's
+   own contents make it, and the menu takes whatever is left. */
 .fix-note {
   display: grid;
   grid-template-columns: minmax(3.5rem, 1fr) repeat(4, 2.75rem);
   align-items: center;
   gap: 0.3rem;
   margin-bottom: 0.35rem;
+}
+/* Six, once there is something to play the notes with.  The column is only cut in when
+   overlay.js says so, so with no scripting, or no Web Audio, the row is the five it was
+   rather than five and an empty gap.  Both halves of that live here: no can-hear, no
+   column and no button. */
+.fixes.can-hear .fix-note {
+  grid-template-columns: 2.75rem minmax(3.5rem, 1fr) repeat(4, 2.75rem);
 }
 .fix-pitch { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
 .fix-pitch select {
@@ -622,6 +630,42 @@ button.fix-acc[aria-current="true"] {
   color: var(--pico-primary-inverse);
 }
 button.fix-clear { font-size: 0.7rem; min-width: 3rem; padding: 0 0.6rem; }
+
+/* The play button in front of a note.  Sized like the accidentals, because it is one more
+   thing to hit with a thumb, and drawn from currentColor with clip-path rather than set as
+   an icon: a thirteen-step page carries one per notehead and none of them needs any markup
+   of its own.  Faint like the bin rather than lit like a spelling, since it says nothing
+   about what the note is. */
+button.fix-hear {
+  display: none;
+  width: auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  margin: 0;
+  background: var(--pico-card-sectioning-background-color);
+  border-color: var(--pico-muted-border-color);
+  color: var(--pico-primary);
+}
+.fixes.can-hear button.fix-hear { display: flex; align-items: center; justify-content: center; }
+button.fix-hear::before {
+  content: "";
+  width: 0.62rem;
+  height: 0.8rem;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+/* Filled on hover, not just outlined: hovering one plays the note, so it has to be
+   obvious which one the pointer is on and that pointing at it did something. */
+button.fix-hear:hover:not([disabled]) {
+  background: var(--pico-primary);
+  border-color: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+/* With the sound off it is disabled rather than hidden: the row keeps its shape, the
+   button stops answering to a pointer instead of answering with silence, and the reason
+   is the Sound button up in the stage controls.  overlay.js sets both. */
+button.fix-hear[disabled] { opacity: 0.45; }
 
 /* The bin is the one button here that takes something away, so it is not drawn like the
    three that spell a note: a faint fill that reads as a different kind of control before

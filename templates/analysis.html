@@ -48,6 +48,7 @@ for system in doc["systems"]:
                     # "G# 4" not "G#4", the same spacing overlay.js uses on the labels.
                     "pretty": re.sub(r"(\d+)$", r" \1", note["pretty"]),
                     "step": step,
+                    "midi": note["midi"],
                     "current": ALTER_BUTTON.get(note["alter"], ""),
                     "by_hand": corrected,
                 })
@@ -293,6 +294,13 @@ safe_json = analysis_json.replace("<", "\\u003C")
         <input type="hidden" name="staff" value="{{hand['staff']}}">
         <input type="hidden" name="note" value="{{note['position']}}">
         <input type="hidden" name="step_number" value="{{fix['number']}}">
+%       # Point at this, tap it, or tab to it and press Enter, to hear this note on its
+%       # own.  Nothing but overlay.js can make it work, so the column it sits in is only
+%       # cut into the row by a class overlay.js adds.  A "%" comment and not an HTML one:
+%       # a comment in the markup is emitted, and this loop runs once per notehead.
+        <button type="button" class="fix-hear" data-midi="{{note['midi']}}"
+                title="Hear {{note['pretty']}}"><span
+          class="visually-hidden">Hear {{note['pretty']}}</span></button>
         <span class="fix-pitch">
           <label class="visually-hidden"
                  for="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}">Which note {{note['pretty']}} is</label>

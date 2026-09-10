@@ -517,9 +517,81 @@
     audio.play(stepMidis(step));
   }
 
+  // One note of a chord on its own.  play() hushes whatever is ringing first, which is
+  // what "in isolation" has to mean here: the chord this note belongs to is usually still
+  // sounding from the click that selected it.
+  function playNote(midi) {
+    if (muted || !audio || !audio.supported) { return; }
+    audio.play([midi]);
+  }
+
+  // The play buttons in the fix panels, one per notehead.  They live there rather than on
+  // the labels over the photo because that is where there is room for them: a label with
+  // six notes stacked in it is 60px across on a phone, which leaves each note about 5x10
+  // to aim at, and a tap that close to a button is given to the button by the browser's own
+  // touch adjustment before any of this code sees it.  A panel row is already thumb sized.
+  var hearButtons = fixes ? fixes.querySelectorAll('.fix-hear') : [];
+
+  function hearButton(target) {
+    return (target && target.closest) ? target.closest('.fix-hear') : null;
+  }
+
+  function buttonMidi(button) {
+    var midi = parseInt(button.dataset.midi, 10);
+    return isNaN(midi) ? null : midi;
+  }
+
+  // Two ways in, and they are not interchangeable.
+  //
+  // A click is a gesture, so it plays whatever it is asked to, from a tap, a mouse or the
+  // keyboard, and it is also what makes the audio context live in the first place.  A
+  // mouse arriving over a button is not a gesture: it can neither build the context nor
+  // resume a suspended one, and a note scheduled against a suspended context is not lost
+  // but queued, so a few hovers would arrive together as a chord the moment a later click
+  // resumed it.  So the hover path waits for the context to be running, and only answers
+  // to a mouse: passing a stylus over a row is not a request to hear it.
+  //
+  // pointermove and not pointerover, which is the obvious choice and the wrong one.  A
+  // scroll moves rows under a cursor that is standing still, and the browser reports that
+  // as arriving over each of them, so a page scrolled with the pointer resting over this
+  // column would play its way down the chord.  Only real movement gets here, and lastHeard
+  // turns the stream of moves back into "arrived at a new one".
+  var lastHeard = null;
+
+  if (fixes) {
+    fixes.addEventListener('pointermove', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') { return; }
+      var button = hearButton(e.target);
+      if (button === lastHeard) { return; }
+      lastHeard = button;
+      if (!button || button.disabled || !audio.live || !audio.live()) { return; }
+      var midi = buttonMidi(button);
+      if (midi !== null) { playNote(midi); }
+    });
+
+    // Leaving the panel forgets where the pointer was, so coming back to the same button
+    // is arriving at it again.  pointerleave does not bubble, which is why it is here.
+    fixes.addEventListener('pointerleave', function () { lastHeard = null; });
+
+    fixes.addEventListener('click', function (e) {
+      var button = hearButton(e.target);
+      if (!button || button.disabled) { return; }
+      var midi = buttonMidi(button);
+      if (midi !== null) { playNote(midi); }
+    });
+  }
+
   function setMuted(next, remember) {
     muted = !!next;
     if (audio && audio.supported) { audio.setMuted(muted); }
+    // Disabled rather than hidden, so the row keeps its shape and the button stops
+    // answering to a pointer instead of answering with silence.  The tooltip says why.
+    for (var i = 0; i < hearButtons.length; i++) {
+      var hear = hearButtons[i];
+      if (hear.__title === undefined) { hear.__title = hear.title; }
+      hear.disabled = muted;
+      hear.title = muted ? 'Turn the sound on to hear this note' : hear.__title;
+    }
     if (soundButton) {
       soundButton.setAttribute('aria-pressed', String(!muted));
       soundButton.textContent = muted ? 'Sound off' : 'Sound on';
@@ -527,6 +599,12 @@
         muted ? 'Sound off, turn chord playback on' : 'Sound on, turn chord playback off');
     }
     if (remember) { store('muted', muted ? '1' : '0'); }
+  }
+
+  if (audio && audio.supported && fixes) {
+    // The column the buttons sit in is cut into the row by this class, so a page with no
+    // Web Audio keeps the five column row it had rather than five and an empty gap.
+    fixes.classList.add('can-hear');
   }
 
   if (soundButton && audio && audio.supported) {

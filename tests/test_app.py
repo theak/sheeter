@@ -207,6 +207,45 @@ class TestPlayback:
         # Playback is on by default, so the button starts pressed.
         assert 'aria-pressed="true"' in page.split('id="sound-toggle"')[1][:80]
 
+    def test_the_player_reports_whether_it_can_be_heard(self, app):
+        """The per-note previews are gated on this, and a hover cannot ask twice.
+
+        Moving a mouse is not a user gesture, so it cannot resume a suspended audio
+        context; notes scheduled against one wait and then all sound at once when a
+        later click resumes it.  Without ``live`` to ask, overlay.js has no way to
+        tell the difference and the previews arrive as a chord.
+        """
+        _status, _headers, body = call(app, "GET", "/static/js/audio.js")
+        assert b"live" in body
+
+    def test_offers_a_play_button_per_notehead(self, app, saved):
+        """One per note, carrying the pitch it plays and named after it.
+
+        The panel is where these live rather than the labels over the photo: a label
+        with a chord in it leaves each note a few pixels to aim at, where a panel row
+        is already thumb sized.
+        """
+        _status, _headers, body = call(app, "GET", "/a/%s" % saved)
+        page = body.decode("utf-8")
+        rows = page.count('class="fix-note"')
+        buttons = page.count('class="fix-hear"')
+        assert rows and buttons == rows
+        assert 'data-midi=' in page
+        assert "Hear " in page
+
+    def test_the_play_buttons_are_drawn_and_only_with_a_player(self, app):
+        """No rule, no button: the glyph is a pseudo-element, not a character.
+
+        And the column they sit in is cut into the row by the same class that draws
+        them, so with no scripting, or no Web Audio, the row is the five it was rather
+        than five and an empty gap.
+        """
+        _status, _headers, body = call(app, "GET", "/static/css/sheeter.css")
+        css = body.decode("utf-8")
+        assert "button.fix-hear" in css
+        assert ".fixes.can-hear button.fix-hear" in css
+        assert ".fixes.can-hear .fix-note" in css
+
     def test_every_note_carries_the_midi_the_player_needs(self, app, saved):
         _status, _headers, body = call(app, "GET", "/a/%s/analysis.json" % saved)
         doc = json.loads(body)
