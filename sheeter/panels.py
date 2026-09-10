@@ -16,7 +16,11 @@ from . import pipeline, pitches
 
 HAND_LABEL = {"right": "Right hand", "left": "Left hand"}
 
-ACCIDENTAL_BUTTONS = (("sharp", "♯"), ("flat", "♭"), ("natural", "♮"))
+#: Low to high, left to right: flat lowers the note, natural leaves it where the key put
+#: it, sharp raises it.  So the row reads in the direction it moves the pitch, and natural
+#: is in the middle because it is the one between the other two rather than a third option
+#: after them.
+ACCIDENTAL_BUTTONS = (("flat", "♭"), ("natural", "♮"), ("sharp", "♯"))
 
 #: alter to the button that is in force.  The state a reader wants marked is what the
 #: note sounds now, not only what is printed in front of it: a note sharpened by the key
