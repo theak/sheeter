@@ -31,11 +31,9 @@ arbitrary mobile scaling.
   },
 
   "engine": {
-    "geometry": "1",                  // geometry module version
-    "verifier": "claude-sonnet-5",    // model id, or null if the vision pass did not run
-    "verified": true,                 // a verifier response was applied.  On a system the
-                                      // geometry was sure about that may be commentary only
-    "verifier_error": null            // human-readable reason the pass was skipped/failed
+    "geometry": "1"                   // geometry module version.  Three fields for a vision
+                                      // pass used to sit here; normalize() drops them from
+                                      // readings stored while it existed
   },
 
   "warnings": [                       // shown to the user above the image
@@ -55,8 +53,10 @@ arbitrary mobile scaling.
           "index": 0,                 // index within this system, top to bottom
           "hand": "right",            // "right" | "left" | null (null = not a grand staff)
           "clef": "treble",           // validator accepts treble|bass|alto|tenor; the
-                                      // geometry only ever emits treble or bass
-          "clef_confidence": 0.92,
+                                      // geometry emits treble over bass on a grand staff
+                                      // and treble on a lone staff, by position
+          "clef_confidence": 1.0,     // a rule, not a measurement, so always 1.0 now;
+                                      // older readings carry the glyph test's figure
           "lines": [336.5, 395.1, 453.8, 512.4, 571.0],   // 5 y values, top to bottom
           "unit": 58.6,               // staff space in px = (lines[4]-lines[0]) / 4
           "x_range": [80, 1900],
@@ -72,7 +72,7 @@ arbitrary mobile scaling.
           "x": 512.0,
           "x_range": [480, 560],
           "confidence": 0.86,
-          "note": null,               // one short sentence from the verifier, or null
+          "note": null,               // one short sentence about this step, or null
 
           "parts": [                  // one entry per staff that has notes at this x
             {
@@ -98,7 +98,7 @@ arbitrary mobile scaling.
                   "ledger": 1,         // ledger lines used: +n above staff, -n below, 0 none
                   "step_err_px": 2.1,  // distance off the pitch grid; > 0.3*unit is suspect
                   "confidence": 0.9,
-                  "changed": false     // the verifier changed this pitch
+                  "changed": false     // a correction moved this pitch off the geometry's reading
                 }
               ],
               "chord": {               // null when the part has a single note
@@ -153,13 +153,7 @@ arbitrary mobile scaling.
 5. Bumping `schema_version` means stored analyses are re-rendered from whatever they have;
    `store.load()` refuses to serve an analysis whose version it does not understand.
 6. `key_override` outranks everything. `pipeline.set_key()` writes the picked key to every
-   staff of every system at `key_confidence` 1.0 and re-spells every note from its own `y`;
-   `verify.apply_correction()` puts it back after a merge, and a re-analysis carries it onto
-   the new reading. Only the reader clearing it returns the page to what the photo says, and
-   that needs a re-analysis, since the detected key is not kept once a choice replaces it.
-7. The vision pass only overrules a system the geometry was unsure of.
-   `verify.geometry_is_sure()` is false when the system is `cut_off`, when a staff has
-   `clef_confidence` or `key_confidence` under 0.9, or when any note has `confidence`
-   under 0.88. On a sure system the clef, `key_fifths`, `parts` and `combined` are
-   restored from the geometry after the merge, so `changed` stays false there and only
-   `event.note` and the appended page-level line in `warnings` come from the model.
+   staff of every system at `key_confidence` 1.0 and re-spells every note from its own `y`,
+   and a re-analysis carries it onto the new reading. Only the reader clearing it returns
+   the page to what the photo says, and that needs a re-analysis, since the detected key is
+   not kept once a choice replaces it.

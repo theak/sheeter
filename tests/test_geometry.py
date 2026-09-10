@@ -121,6 +121,33 @@ class TestStaffFinding:
         assert len(staves) == 1
         assert staves[0]["support"] > 0.9, "every line is inked across the whole span"
 
+    def test_pairs_staves_whose_measured_edges_both_start_late(self):
+        """The barline joining a grand staff is looked for from the page's left margin.
+
+        Dense front matter, a treble clef, a sharp and a 4/4, breaks the first stretch
+        of every staff line into runs too short to count as line, so both staves of a
+        pair can measure as starting a hundred pixels in.  Anchored on the pair's own
+        edges the window sat clear of the barline and the pair came apart into two lone
+        staves, each then read with a lone staff's clef.  Another staff on the page
+        with a plain left edge says where the margin really is.
+        """
+        mask, _ = staff_image(height=760, margin=40)
+        lower, _ = staff_image(height=760, top=260, margin=40)
+        mask |= lower
+        mask[140:265, 45:48] = True          # the first pair, joined, edges measured right
+        # The second pair's lines only survive from x=180; the barline is still at the margin.
+        third, _ = staff_image(height=760, top=500, margin=40)
+        fourth, _ = staff_image(height=760, top=660, margin=40)
+        late = third | fourth
+        late[:, :180] = False
+        mask |= late
+        mask[580:665, 45:48] = True
+        thickness, unit = geometry.estimate_scale(mask)
+        staves = geometry.find_staves(mask, thickness, unit)
+        assert len(staves) == 4
+        assert staves[2]["x_range"][0] >= 170, "the third staff does measure late"
+        assert geometry.group_systems(staves, mask, unit) == [[0, 1], [2, 3]]
+
     def test_separates_two_systems_by_the_gap(self):
         mask, _ = staff_image(height=700)
         second, _ = staff_image(height=700, top=460)
@@ -405,8 +432,10 @@ class TestClef:
 
     Nothing looks wrong: the noteheads are found, the chord is named, the overlay lines
     up. Every pitch on that staff is just a twelfth out, because the treble and bass
-    reference lines are twelve diatonic steps apart. It is silent and total, so the
-    detector has to be robust to the things a real page does to a glyph.
+    reference lines are twelve diatonic steps apart. It is silent and total, which is
+    why the clef is no longer read off the glyph at all: a grand staff is treble over
+    bass and a lone staff is treble.  What the glyph still has to give is where it
+    ends, since the key signature and the first notes are looked for after it.
     """
 
     FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "grand_2flats.png")
@@ -428,22 +457,37 @@ class TestClef:
             _gray, mask, _info = pre.prepare(handle.read())
         return mask
 
-    def _read(self, mask):
+    def _ends(self, mask):
+        """Each staff's clef end, as a column of the page."""
         staves, cleaned, unit, height = self._staves(mask)
         out = []
         for index in range(len(staves)):
             band = geometry.staff_band(staves, index, unit, height)
-            out.append(geometry.detect_clef(cleaned, staves[index], band, unit)[0])
+            out.append(geometry.clef_end(cleaned, staves[index], band, unit))
         return out
 
-    def test_reads_a_grand_staff(self, page):
-        assert self._read(page) == ["treble", "bass"]
+    def _assert_past_the_clef(self, ends, page):
+        # Wherever the page has been knocked about, the clef ends where it ended on the
+        # clean page, give or take half a staff space.  Measured against the clean
+        # page rather than against the staff's own edge, because some of the knocks
+        # below move that edge, and the point is that the end does not move with it.
+        _staves, _cleaned, unit, _height = self._staves(page)
+        clean = self._ends(page)
+        assert len(ends) == len(clean) == 2
+        for end, want in zip(ends, clean):
+            assert abs(end - want) <= unit * 0.5, (ends, clean)
 
-    def test_a_blotted_bass_clef_is_still_a_bass_clef(self, page):
-        """The real one. A photocopied book page thickens every stroke, and a bass clef
-        fattened that way measured 5.47 staff spaces tall. The detector used to call
-        anything over 4 a treble clef, so the whole left hand came out a twelfth high
-        while looking perfectly plausible."""
+    def test_finds_where_both_clefs_end(self, page):
+        # A treble clef is about two and a half spaces wide and a bass clef about two;
+        # anything under one space missed the glyph, anything past four is out among
+        # the key signature and the notes.
+        staves, _cleaned, unit, _height = self._staves(page)
+        for end, staff in zip(self._ends(page), staves):
+            past = (end - staff["x_range"][0]) / unit
+            assert 1.0 < past < 4.0, past
+
+    def test_a_blotted_clef_still_ends_where_it_ends(self, page):
+        """A photocopied book page thickens every stroke."""
         from scipy import ndimage
 
         staves, _cleaned, unit, _height = self._staves(page)
@@ -453,32 +497,24 @@ class TestClef:
                slice(max(0, left - int(unit)), left + int(unit * 3)))
         blotted = page.copy()
         blotted[box] = ndimage.binary_dilation(blotted[box], structure=np.ones((5, 5)))
-        assert self._read(blotted) == ["treble", "bass"]
+        self._assert_past_the_clef(self._ends(blotted), page)
 
     def test_a_page_whose_lines_drift_keeps_both_clefs_in_view(self, page):
         """The consequence of a short staff span, on a real page.
 
-        detect_clef only looks in the first seven staff spaces after the staff's own
-        left edge.  Measure that edge from one pixel row of a line that is not level
-        and it lands out among the notes, the clef is not in the window, and the staff
-        falls back to whatever its position implies.  Confidence 0.0 is the only trace,
-        and no pitch on the page looks wrong.
+        clef_end only looks in the first seven staff spaces after the staff's own left
+        edge.  Measure that edge from one pixel row of a line that is not level and it
+        lands out among the notes, the clef is not in the window, and the reading
+        starts on top of it.
         """
         drifted = page.copy()
         cut = drifted.shape[1] // 3
         # Everything right of a third of the way across drops two pixels, which is what
         # a fraction of a degree of skew does over a page this wide.
         drifted[:, cut:] = np.roll(drifted[:, cut:], 2, axis=0)
-        assert self._read(drifted) == ["treble", "bass"]
+        self._assert_past_the_clef(self._ends(drifted), page)
 
-        staves, cleaned, unit, height = self._staves(drifted)
-        for index in range(2):
-            band = geometry.staff_band(staves, index, unit, height)
-            _clef, confidence, _end = geometry.detect_clef(cleaned, staves[index],
-                                                           band, unit)
-            assert confidence > 0.5, "staff %d found no glyph to measure" % index
-
-    def test_a_barline_welded_to_the_clef_does_not_change_it(self, page):
+    def test_a_barline_welded_to_the_clef_does_not_move_its_end(self, page):
         """Braces, opening barlines and stems are stripped before the glyph is measured.
         Left in, they join it into one component spanning the whole band."""
         staves, _cleaned, unit, _height = self._staves(page)
@@ -487,9 +523,9 @@ class TestClef:
         welded = page.copy()
         welded[int(upper["lines"][0]):int(lower["lines"][-1] + unit * 2),
                max(0, left - 2):left + int(unit * 0.5)] = True
-        assert self._read(welded) == ["treble", "bass"]
+        self._assert_past_the_clef(self._ends(welded), page)
 
-    def test_a_long_stem_below_the_staff_is_not_a_clef(self, page):
+    def test_a_long_stem_below_the_staff_is_not_where_the_clef_ends(self, page):
         staves, _cleaned, unit, _height = self._staves(page)
         lower = staves[1]
         left = lower["x_range"][0]
@@ -497,7 +533,52 @@ class TestClef:
         bottom = int(lower["lines"][-1])
         stemmed[bottom:bottom + int(unit * 5),
                 left + int(unit * 5):left + int(unit * 5) + 3] = True
-        assert self._read(stemmed) == ["treble", "bass"]
+        self._assert_past_the_clef(self._ends(stemmed), page)
+
+    def test_the_whole_page_reads_treble_over_bass(self, page):
+        systems, _warnings = geometry.analyze(page)
+        assert [[staff["clef"] for staff in system["staves"]] for system in systems] \
+            == [["treble", "bass"]]
+        assert [[staff["hand"] for staff in system["staves"]] for system in systems] \
+            == [["right", "left"]]
+
+
+class TestAssignClefs:
+    """Clefs come from where a staff sits, not from what is drawn at its edge."""
+
+    def _members(self, count):
+        return [{"staff": None, "band": None, "clef_end": 0} for _ in range(count)]
+
+    def test_a_grand_staff_is_treble_over_bass(self):
+        members = self._members(2)
+        geometry._assign_clefs(members)
+        assert [m["clef"] for m in members] == ["treble", "bass"]
+        assert [m["hand"] for m in members] == ["right", "left"]
+        assert all(m["clef_conf"] == 1.0 for m in members)
+
+    def test_a_lone_staff_is_treble_with_no_hand(self):
+        members = self._members(1)
+        geometry._assign_clefs(members)
+        assert members[0]["clef"] == "treble" and members[0]["hand"] is None
+
+    def test_three_staves_are_all_treble_and_unhanded(self):
+        # An organ score or a song with a piano part: read, but not as hands.
+        members = self._members(3)
+        geometry._assign_clefs(members)
+        assert [m["clef"] for m in members] == ["treble"] * 3
+        assert [m["hand"] for m in members] == [None] * 3
+
+
+class TestLineUpLeftEdges:
+    def test_the_leftmost_edge_wins_and_right_edges_are_kept(self):
+        staves = [{"x_range": [175, 1976]}, {"x_range": [41, 1900]}]
+        geometry._line_up_left_edges(staves)
+        assert [s["x_range"] for s in staves] == [[41, 1976], [41, 1900]]
+
+    def test_a_lone_staff_is_left_alone(self):
+        staves = [{"x_range": [175, 1976]}]
+        geometry._line_up_left_edges(staves)
+        assert staves[0]["x_range"] == [175, 1976]
 
 
 class TestGlyphColumns:
@@ -633,3 +714,115 @@ class TestStemInATimeSignature:
     def test_a_wide_column_is_not_a_stem(self):
         block = np.ones((90, 30), dtype=bool)           # solid, every column is tall
         assert not geometry._has_stem(block, thickness=4)
+
+
+class TestGrandStaffGap:
+    """Which staff owns a notehead in the gap between the two staves of a grand staff.
+
+    The midpoint of the gap is right for a note one ledger line out and wrong for one
+    two ledgers out: in a gap under four spaces wide the right hand's A3 sits past the
+    middle, where the bass used to claim it as a D4, with the whole note's own rim as
+    the ledger line, or throw it away.  Both staves now look across the whole gap, each
+    demanding the ledger lines the note would need at its own spacing, and only where
+    both can account for a note does the midpoint still decide.
+    """
+
+    UNIT = 20
+
+    def _grand_staff(self, gap_spaces):
+        unit = self.UNIT
+        upper, lines = staff_image(unit=unit, height=440)
+        lower_top = 60 + 4 * unit + int(gap_spaces * unit)
+        lower, lower_lines = staff_image(unit=unit, height=440, top=lower_top)
+        mask = upper | lower
+        mask[60:lower_top + 4 * unit + 2, 45:48] = True      # the barline joining them
+        return mask, lines, lower_lines
+
+    def _whole_note(self, mask, x, y):
+        """A whole note: wider than the outline template and hollow, walls thick."""
+        kernel = geometry.ellipse_kernel(self.UNIT, width=1.75).astype(bool)
+        kernel &= ~geometry._shrink(kernel, int(self.UNIT * 0.3))
+        kh, kw = kernel.shape
+        mask[int(y) - kh // 2:int(y) - kh // 2 + kh, x - kw // 2:x - kw // 2 + kw] |= kernel
+
+    def _ledger(self, mask, x, y):
+        mask[int(y):int(y) + 2, x - 24:x + 25] = True         # about 2.4 spaces wide
+
+    def _hands(self, mask):
+        systems, _warnings = geometry.analyze(mask)
+        assert len(systems) == 1 and systems[0]["grand"]
+        out = {}
+        for event in systems[0]["events"]:
+            for part in event["parts"]:
+                out.setdefault(part["hand"], []).extend(
+                    (round(n["x"]), n["name"]) for n in part["notes"])
+        return out
+
+    def test_a_right_hand_note_past_the_midpoint_stays_with_the_right_hand(self):
+        mask, lines, _ = self._grand_staff(gap_spaces=3.5)
+        y = lines[4] + 2 * self.UNIT          # two ledgers below the treble: A3
+        assert y > (lines[4] + lines[4] + 3.5 * self.UNIT) / 2, "past the midpoint"
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lines[4] + self.UNIT)
+        self._ledger(mask, 300, y)
+        assert self._hands(mask) == {"right": [(300, "A3")]}
+
+    def test_a_left_hand_note_past_the_midpoint_stays_with_the_left_hand(self):
+        mask, lines, lower = self._grand_staff(gap_spaces=3.5)
+        y = lower[0] - 2 * self.UNIT          # two ledgers above the bass: E4
+        assert y < (lines[4] + lower[0]) / 2, "past the midpoint the other way"
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lower[0] - self.UNIT)
+        self._ledger(mask, 300, y)
+        assert self._hands(mask) == {"left": [(300, "E4")]}
+
+    def test_where_both_staves_ledger_rows_coincide_the_midpoint_still_decides(self):
+        """In a gap of exactly three spaces the treble's second ledger row is the
+        bass's first, so a note there is either hand's by geometry alone.  Both find
+        it, and the nearer staff keeps it, which is what always happened."""
+        mask, lines, lower = self._grand_staff(gap_spaces=3.0)
+        y = lines[4] + 2 * self.UNIT
+        assert abs(y - (lower[0] - self.UNIT)) < 1
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lines[4] + self.UNIT)
+        self._ledger(mask, 300, y)
+        hands = self._hands(mask)
+        assert sum(len(v) for v in hands.values()) == 1, "found once, not twice"
+        assert hands == {"left": [(300, "C4")]}
+
+
+class TestLedgerStubIsALine:
+    """A ledger line is as thick as a staff line.  A notehead's wall is not."""
+
+    UNIT = 20
+
+    def _staff_with_wide_hollow_note_above(self, with_ledger):
+        unit = self.UNIT
+        mask, lines = staff_image(unit=unit, height=300, top=150)
+        staff = {"lines": lines, "unit": float(unit), "x_range": [40, 560]}
+        y = lines[0] - 1.5 * unit             # the space above the first ledger line
+        kernel = geometry.ellipse_kernel(unit, width=1.75).astype(bool)
+        kernel &= ~geometry._shrink(kernel, int(unit * 0.3))
+        kh, kw = kernel.shape
+        mask[int(y) - kh // 2:int(y) - kh // 2 + kh, 300 - kw // 2:300 - kw // 2 + kw] |= kernel
+        if with_ledger:
+            mask[int(lines[0] - unit):int(lines[0] - unit) + 2, 276:325] = True
+        return mask, staff
+
+    def _read(self, mask, staff):
+        thickness, unit = geometry.estimate_scale(mask)
+        cleaned = geometry.remove_staff_lines(
+            mask, geometry.staff_line_mask(mask, thickness, unit), thickness, unit)
+        return geometry.detect_noteheads(mask, cleaned, staff, (0, mask.shape[0]),
+                                         float(self.UNIT), thickness, 100)
+
+    def test_a_whole_notes_own_rim_is_not_the_ledger_line_it_needs(self):
+        """The rung it needs falls exactly on its bottom rim, and a whole note is wide
+        enough for that rim to reach as far out as a ledger line would.  It is still
+        half a space tall there, and a line is two pixels."""
+        mask, staff = self._staff_with_wide_hollow_note_above(with_ledger=False)
+        assert self._read(mask, staff) == []
+
+    def test_with_the_ledger_line_drawn_it_is_a_note(self):
+        mask, staff = self._staff_with_wide_hollow_note_above(with_ledger=True)
+        assert [note["k"] for note in self._read(mask, staff)] == [11]

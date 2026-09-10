@@ -1,8 +1,6 @@
 # Alpine.  Every requirement has a musllinux wheel on both amd64 and arm64, so nothing
-# is built from source here.  That is only true because the Anthropic SDK is not one of
-# them: it pulls in jiter, which publishes no musl wheel at all, and pip does not fail
-# on that, it quietly resolves back to an SDK too old to send the strict tool schemas
-# in sheeter/verify.py.  sheeter/claude.py is a few dozen lines of urllib instead.
+# is built from source here.  Keep it that way: an SDK that pulls in a Rust extension
+# with no musl wheel (jiter, tiktoken, tokenizers) means a toolchain in the image.
 FROM python:3.13-alpine
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
@@ -19,7 +17,7 @@ COPY sheeter/ /app/sheeter/
 COPY static/ /app/static/
 COPY templates/ /app/templates/
 ADD app.py /app/
-# And the app itself imports, which covers ssl for sheeter/claude.py.
+# And the app itself imports, which covers the templates and the routes.
 RUN python -c "import app"
 # Analyses live on a volume so a container restart keeps the user's history.
 ENV SHEETER_DATA_DIR=/data

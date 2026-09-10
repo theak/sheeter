@@ -219,12 +219,23 @@
     marks.push(mark);
   });
 
+  var NAME_STEP_PX = 2;
+
   function makePill(className, tagText, lines, step, anchor) {
     var pill = el('button', 'pill ' + className);
     pill.type = 'button';
     pill.appendChild(el('span', 'tag', tagText));
     var names = el('span', 'names');
-    lines.forEach(function (line) { names.appendChild(el('span', null, line)); });
+    lines.forEach(function (line, index) {
+      var name = el('span', null, line);
+      // The bottom line sits flush and each one above it steps right by NAME_STEP_PX, so a
+      // chord's notes read left to right as well as top to bottom.  Pixels rather than em
+      // on purpose: the step is a reading aid, not part of the type, and it stays legible
+      // at the smallest label size without growing into a stair at the largest.
+      var above = lines.length - 1 - index;
+      if (above) { name.style.marginLeft = (above * NAME_STEP_PX) + 'px'; }
+      names.appendChild(name);
+    });
     pill.appendChild(names);
     pill.dataset.step = String(step.number);
     pill.setAttribute('aria-label',
@@ -909,9 +920,7 @@
       if (step.event.note) { lines.push('  note: ' + step.event.note); }
     });
     lines.push('');
-    lines.push(doc.engine && doc.engine.verified
-      ? 'Checked against the photo by ' + (doc.engine.verifier || 'a vision model') + '.'
-      : 'Read from staff geometry only, not checked by a model.');
+    lines.push('Read from staff geometry only, not checked by a model.');
     return lines.join('\n');
   }
 

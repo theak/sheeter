@@ -165,8 +165,11 @@
   color: var(--pico-muted-color);
   white-space: nowrap;
 }
-.badge-ok { border-color: var(--sheeter-right); color: var(--sheeter-right); }
 .provenance-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+/* Pico gives every button a bottom margin the size of a line.  The two in forms lose it
+   through .inline-form button; the copy button stands alone, and with the row centring
+   each item's margin box it sat half a line above its neighbours. */
+.provenance-actions button { margin: 0; width: auto; }
 .badge-warn { background: var(--pico-del-color, #c0392b); color: #fff; }
 
 .empty-state, .about, .foot { margin-top: 2rem; }
@@ -287,7 +290,9 @@
   border-right: 1px solid rgba(255, 255, 255, 0.45);
   padding-right: 0.25em;
 }
-.pill .names { display: flex; flex-direction: column; }
+.pill .names { display: flex; flex-direction: column; align-items: flex-start; }
+/* Stacked note names step right as they go up, two pixels a note from the bottom one, so
+   the eye reads them left to right as well as top to bottom.  makePill sets the margin. */
 .pill.hand-r { background: var(--sheeter-right); }
 .pill.hand-l { background: var(--sheeter-left); }
 .pill.chord { background: var(--sheeter-chord); }

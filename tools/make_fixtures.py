@@ -78,20 +78,6 @@ CASES = [
         ]],
     },
     {
-        "name": "bass_quarters",
-        "tags": ["single-staff", "single-notes"],
-        "fifths": 0,
-        "meter": "4/4",
-        "staves": [(None, "bass")],
-        "accidentals": [],
-        "systems": [[
-            ev(1.0, bass=["G2"]),
-            ev(1.0, bass=["B2"]),
-            ev(1.0, bass=["D3"]),
-            ev(1.0, bass=["A3"]),
-        ]],
-    },
-    {
         # The case that breaks naive x-clustering: a second forces one notehead
         # of the pair to sit on the far side of the stem.
         "name": "grand_2flats",

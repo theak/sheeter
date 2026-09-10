@@ -133,8 +133,8 @@ class TestSetKey:
         assert after == before
 
     def test_a_reader_who_says_so_is_believed(self, doc):
-        # verify.geometry_is_sure reads this, which is what stops the vision pass
-        # putting its own key back over a choice somebody made looking at the page.
+        # A choice somebody made looking at the page outranks the measurement, and the
+        # confidence is where the reading says so.
         pipeline.set_key(doc, 3)
         assert all(staff["key_confidence"] == 1.0
                    for system in doc["systems"] for staff in system["staves"])
@@ -299,8 +299,7 @@ class TestDeleteEvent:
         assert _right(doc, 0) == ["A4", "C5"], "the one that was second is now first"
 
     def test_the_events_left_are_renumbered(self):
-        """Not cosmetic: the schema requires an event's index to be its position, and
-        the verify merge matches its answer up by that index."""
+        """Not cosmetic: the schema requires an event's index to be its position."""
         doc = _editable(extra=[(500, ["E4"]), (600, ["F4"])])
         pipeline.delete_event(doc, 0, 1)
         assert [e["index"] for e in doc["systems"][0]["events"]] == [0, 1, 2]

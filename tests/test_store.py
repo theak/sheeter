@@ -189,7 +189,7 @@ def test_save_rejects_a_doc_that_does_not_match_the_bytes(data_root):
 def test_save_validates_before_writing_anything(data_root):
     raw = b"broken doc"
     doc = make_doc(raw)
-    del doc["engine"]["verified"]
+    del doc["engine"]["geometry"]
     with pytest.raises(schema.SchemaError):
         store.save(doc, raw, "jpg", png_bytes())
     assert os.listdir(data_root) == []
@@ -260,7 +260,7 @@ def test_load_fills_in_a_field_a_stored_reading_predates(data_root):
     """The picker's key_override was added later, so files on disk do not have it.
 
     This is the case that would have gone wrong quietly: a document that loads but is
-    then missing a key the strict validator requires, so the next rename or verify
+    then missing a key the strict validator requires, so the next rename or key pick
     fails on a reading that opened perfectly well.
     """
     ident, doc = save_one()
@@ -305,18 +305,31 @@ def test_listing_is_newest_first_with_summaries(data_root):
     assert entry["system_count"] == 1
     assert entry["event_count"] == len(CHORDS)
     assert entry["note_count"] == sum(len(c) for c in CHORDS)
-    assert entry["verified"] is False
+    assert "verified" not in entry
     assert entry["summary"] == "Bbmaj9 - Eb6/9 - Gm11"
 
     assert [e["id"] for e in store.listing(limit=1)] == [new]
 
 
-def test_listing_reports_the_verified_flag(data_root):
+def test_load_drops_the_fields_of_the_old_vision_pass(data_root):
+    """A reading written while a model checked pages still loads, minus those fields.
+
+    Refusing it would be worse than useless: store.listing swallows the error, so the
+    reading would vanish from the gallery without a word.  Its pitches are the reading
+    and are kept; only the bookkeeping of the pass that wrote them goes.
+    """
     ident, doc = save_one()
-    doc["engine"]["verified"] = True
-    doc["engine"]["verifier"] = "claude-sonnet-5"
-    store.save_doc(doc)
-    assert store.listing()[0]["verified"] is True
+    path = store.path(ident, "analysis.json")
+    with open(path) as handle:
+        stored = json.load(handle)
+    stored["engine"].update(verifier="some-model", verified=True, verifier_error=None)
+    with open(path, "w") as handle:
+        json.dump(stored, handle)
+    loaded = store.load(ident)
+    assert loaded["engine"] == {"geometry": doc["engine"]["geometry"]}
+    assert loaded["systems"] == doc["systems"]
+    store.save_doc(loaded)
+    assert store.listing()[0]["id"] == ident
 
 
 def test_listing_survives_corrupt_and_half_written_directories(data_root):
