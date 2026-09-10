@@ -120,14 +120,31 @@
   // ---------------------------------------------------------------- events
 
   var steps = [];
+  var pills = [];
+  var marks = [];
 
-  systems.forEach(function (system) {
-    (system.events || []).forEach(function (event) {
-      steps.push({ system: system, event: event, number: steps.length + 1 });
+  // Everything drawn over the photo, built from the document as it stands and thrown
+  // away and built again when a correction lands.  Rebuilt rather than patched because
+  // an edit can rename the chord, move a notehead to another staff position or take one
+  // out of the reading, and each of those changes a label's text, its anchor, or both.
+  // Returns how many steps there are, which is zero on a page with no noteheads.
+  function buildOverlay() {
+    labels.innerHTML = '';
+    steps = [];
+    pills = [];
+    marks = [];
+    systems.forEach(function (system) {
+      (system.events || []).forEach(function (event) {
+        steps.push({ system: system, event: event, number: steps.length + 1 });
+      });
     });
-  });
+    if (!steps.length) { return 0; }
+    buildMarks();
+    buildPills();
+    return steps.length;
+  }
 
-  if (!systems.length || !steps.length) {
+  if (!systems.length || !buildOverlay()) {
     if (stageEmpty) {
       stageEmpty.textContent = systems.length
         ? 'Staff lines were found, but no noteheads on them. Try a sharper photo, or one taken square on to the page.'
@@ -196,28 +213,28 @@
   function percentX(x) { return imageWidth ? clamp(x / imageWidth * 100, 0, 100) : 0; }
   function percentY(y) { return imageHeight ? clamp(y / imageHeight * 100, 0, 100) : 0; }
 
-  var pills = [];
-  var marks = [];
-
-  steps.forEach(function (step) {
-    var geom = systemGeometry(step.system);
-    var combined = step.event.combined || {};
-    var mark = el('button', 'step-mark');
-    mark.type = 'button';
-    mark.dataset.step = String(step.number);
-    mark.style.left = percentX(step.event.x) + '%';
-    mark.style.top = percentY(geom.bandTop) + '%';
-    mark.style.height = Math.max(0, percentY(geom.bandBottom) - percentY(geom.bandTop)) + '%';
-    var dot = el('span', 'step-dot', String(step.number));
-    var span = Math.max(1, geom.bandBottom - geom.bandTop);
-    dot.style.top = clamp((geom.dotY - geom.bandTop) / span * 100, 0, 100) + '%';
-    mark.appendChild(dot);
-    mark.setAttribute('aria-label', 'Step ' + step.number + ' of ' + steps.length +
-      (combined.symbol ? ', ' + combined.symbol : ''));
-    mark.addEventListener('click', function () { select(step.number, false, true); });
-    labels.appendChild(mark);
-    marks.push(mark);
-  });
+  // The numbered dot for every event, sitting in the gap of the grand staff.
+  function buildMarks() {
+    steps.forEach(function (step) {
+      var geom = systemGeometry(step.system);
+      var combined = step.event.combined || {};
+      var mark = el('button', 'step-mark');
+      mark.type = 'button';
+      mark.dataset.step = String(step.number);
+      mark.style.left = percentX(step.event.x) + '%';
+      mark.style.top = percentY(geom.bandTop) + '%';
+      mark.style.height = Math.max(0, percentY(geom.bandBottom) - percentY(geom.bandTop)) + '%';
+      var dot = el('span', 'step-dot', String(step.number));
+      var span = Math.max(1, geom.bandBottom - geom.bandTop);
+      dot.style.top = clamp((geom.dotY - geom.bandTop) / span * 100, 0, 100) + '%';
+      mark.appendChild(dot);
+      mark.setAttribute('aria-label', 'Step ' + step.number + ' of ' + steps.length +
+        (combined.symbol ? ', ' + combined.symbol : ''));
+      mark.addEventListener('click', function () { select(step.number, 'stage', true); });
+      labels.appendChild(mark);
+      marks.push(mark);
+    });
+  }
 
   var NAME_STEP_PX = 4;
 
@@ -241,56 +258,60 @@
     pill.setAttribute('aria-label',
       'Step ' + step.number + ', ' + tagText + ', ' + lines.join(' '));
     if ((step.event.confidence || 0) < 0.7) { pill.classList.add('low'); }
-    pill.addEventListener('click', function () { select(step.number, false, true); });
+    pill.addEventListener('click', function () { select(step.number, 'stage', true); });
     pill.__anchor = anchor;
     labels.appendChild(pill);
     pills.push(pill);
     return pill;
   }
 
-  steps.forEach(function (step) {
-    var system = step.system;
-    var event = step.event;
-    var geom = systemGeometry(system);
+  // One label per hand per event, plus the chord symbol over each: what the reader
+  // actually reads off the photo.
+  function buildPills() {
+    steps.forEach(function (step) {
+      var system = step.system;
+      var event = step.event;
+      var geom = systemGeometry(system);
 
-    (event.parts || []).forEach(function (part) {
-      if (!part.notes || !part.notes.length) { return; }
-      var staff = staffOf(system, part.staff);
-      var left = part.notes[0].x;
-      var right = part.notes[0].x;
-      var top = part.notes[0].y;
-      var bottom = part.notes[0].y;
-      part.notes.forEach(function (note) {
-        var halfWidth = (note.w || 0) / 2;
-        left = Math.min(left, note.x - halfWidth);
-        right = Math.max(right, note.x + halfWidth);
-        top = Math.min(top, note.y);
-        bottom = Math.max(bottom, note.y);
-      });
-      var gap = (staff && staff.unit ? staff.unit : geom.unit) * 0.6;
-      makePill('hand-' + handTone(part, staff), handTag(part, staff), displayNames(part), step,
-               { kind: 'hand', left: left - gap, right: right + gap, cy: (top + bottom) / 2 });
-    });
-
-    var symbol = event.combined && event.combined.symbol;
-    if (symbol) {
-      // Clear of this event's own noteheads where the photo has room for it, otherwise just
-      // clear of the staff, otherwise underneath the system.  layoutLabels() picks.
-      var highest = geom.top;
       (event.parts || []).forEach(function (part) {
-        (part.notes || []).forEach(function (note) {
-          highest = Math.min(highest, note.y - (note.h || 0) / 2);
+        if (!part.notes || !part.notes.length) { return; }
+        var staff = staffOf(system, part.staff);
+        var left = part.notes[0].x;
+        var right = part.notes[0].x;
+        var top = part.notes[0].y;
+        var bottom = part.notes[0].y;
+        part.notes.forEach(function (note) {
+          var halfWidth = (note.w || 0) / 2;
+          left = Math.min(left, note.x - halfWidth);
+          right = Math.max(right, note.x + halfWidth);
+          top = Math.min(top, note.y);
+          bottom = Math.max(bottom, note.y);
         });
+        var gap = (staff && staff.unit ? staff.unit : geom.unit) * 0.6;
+        makePill('hand-' + handTone(part, staff), handTag(part, staff), displayNames(part), step,
+                 { kind: 'hand', left: left - gap, right: right + gap, cy: (top + bottom) / 2 });
       });
-      makePill('chord', 'C', [symbol], step, {
-        kind: 'chord',
-        x: event.x,
-        raised: highest - geom.unit * 0.7,
-        above: geom.top - geom.unit * 0.7,
-        below: geom.bottom + geom.unit * 0.7
-      });
-    }
-  });
+
+      var symbol = event.combined && event.combined.symbol;
+      if (symbol) {
+        // Clear of this event's own noteheads where the photo has room for it, otherwise just
+        // clear of the staff, otherwise underneath the system.  layoutLabels() picks.
+        var highest = geom.top;
+        (event.parts || []).forEach(function (part) {
+          (part.notes || []).forEach(function (note) {
+            highest = Math.min(highest, note.y - (note.h || 0) / 2);
+          });
+        });
+        makePill('chord', 'C', [symbol], step, {
+          kind: 'chord',
+          x: event.x,
+          raised: highest - geom.unit * 0.7,
+          above: geom.top - geom.unit * 0.7,
+          below: geom.bottom + geom.unit * 0.7
+        });
+      }
+    });
+  }
 
   // ---------------------------------------------------------------- layout
 
@@ -461,8 +482,8 @@
   // one there is nothing for it to apply and it only asks to be puzzled over.  Hidden
   // here rather than shown here, so with no scripting it is simply always there and the
   // menu still has its submit button: the direction that fails safe.
-  function armPitchMenus() {
-    var forms = document.querySelectorAll('.fix-panel .fix-pitch');
+  function armPitchMenus(root) {
+    var forms = root.querySelectorAll('.fix-pitch');
     for (var i = 0; i < forms.length; i++) {
       (function (group) {
         var menu = group.querySelector('select');
@@ -477,8 +498,19 @@
     }
   }
 
-  // A correction posts back to #step-N so the reader lands on the step they were fixing
-  // rather than at the top of the page with nothing selected.
+  // The selected step, left in the address bar so that reloading comes back to it.  A
+  // correction used to put it there by redirecting to #step-N; nothing navigates now, and
+  // clicking through the steps never did.  replaceState and not location.hash, which
+  // would scroll the page to the panel every time the reader pressed Next.
+  function rememberStep(number) {
+    if (!window.history || !window.history.replaceState) { return; }
+    try {
+      window.history.replaceState(null, '', '#step-' + number);
+    } catch (e) { /* opened from a file, or a history that will not have it */ }
+  }
+
+  // A correction with no scripting posts back to #step-N, so the reader lands on the step
+  // they were fixing rather than at the top of the page with nothing selected.
   function stepFromHash() {
     var match = /^#step-(\d+)$/.exec(window.location.hash || '');
     return match ? parseInt(match[1], 10) : 0;
@@ -530,8 +562,6 @@
   // six notes stacked in it is 60px across on a phone, which leaves each note about 5x10
   // to aim at, and a tap that close to a button is given to the button by the browser's own
   // touch adjustment before any of this code sees it.  A panel row is already thumb sized.
-  var hearButtons = fixes ? fixes.querySelectorAll('.fix-hear') : [];
-
   function hearButton(target) {
     return (target && target.closest) ? target.closest('.fix-hear') : null;
   }
@@ -539,6 +569,22 @@
   function buttonMidi(button) {
     var midi = parseInt(button.dataset.midi, 10);
     return isNaN(midi) ? null : midi;
+  }
+
+  // Disabled rather than hidden while the sound is off, so the row keeps its shape and
+  // the button stops answering to a pointer instead of answering with silence; the
+  // tooltip says why.  Re-queried on every call rather than held in a list: a corrected
+  // panel is redrawn from the server, so its buttons are new nodes and a list taken once
+  // would be pointing at the ones that have gone.
+  function syncHear() {
+    if (!fixes) { return; }
+    var buttons = fixes.querySelectorAll('.fix-hear');
+    for (var i = 0; i < buttons.length; i++) {
+      var hear = buttons[i];
+      if (hear.__title === undefined) { hear.__title = hear.title; }
+      hear.disabled = muted;
+      hear.title = muted ? 'Turn the sound on to hear this note' : hear.__title;
+    }
   }
 
   // Two ways in, and they are not interchangeable.
@@ -584,14 +630,7 @@
   function setMuted(next, remember) {
     muted = !!next;
     if (audio && audio.supported) { audio.setMuted(muted); }
-    // Disabled rather than hidden, so the row keeps its shape and the button stops
-    // answering to a pointer instead of answering with silence.  The tooltip says why.
-    for (var i = 0; i < hearButtons.length; i++) {
-      var hear = hearButtons[i];
-      if (hear.__title === undefined) { hear.__title = hear.title; }
-      hear.disabled = muted;
-      hear.title = muted ? 'Turn the sound on to hear this note' : hear.__title;
-    }
+    syncHear();
     if (soundButton) {
       soundButton.setAttribute('aria-pressed', String(!muted));
       soundButton.textContent = muted ? 'Sound off' : 'Sound on';
@@ -620,10 +659,235 @@
     soundButton.hidden = true;
   }
 
+  // ---------------------------------------------------------------- corrections
+
+  // A correction is a form post, and with no scripting that is the whole feature: the
+  // server applies it and sends the page back, and the reader lands on #step-N.  What
+  // that costs is the zoom, the pan and the reader's place on the page, to alter one
+  // panel of a page that is 86% panels.  So with scripting the same post goes by fetch
+  // and the answer is only the panels the change moved.  The server renders those,
+  // because the server is what knows how a panel looks: building them here would be the
+  // same markup, the same titles and the same labels written twice in two languages, and
+  // one of the two would drift.
+  //
+  // Which panels moved is the server's answer too, and it is not always the one the
+  // reader clicked in: a written accidental holds to the end of its measure, so
+  // flattening a note re-spells the later notes at that staff position as well, and
+  // their panels are as wrong as the edited one until they are redrawn.
+
+  //: One at a time.  The page reload used to serialize these for free -- there was no
+  //: clicking again before it came back -- and writing an edit back is read, splice,
+  //: write, so two of them in flight together have the second drop the first.  Dropped
+  //: rather than queued: an edit is arithmetic on a stored reading and answers in
+  //: milliseconds, and a reader leaning on a button wants the edit, not five of them.
+  var busy = false;
+
+  function editForm(target) {
+    // Deleting a chord is deliberately not here.  It renumbers every step after it, so
+    // the answer to it is a reload, and letting the form post normally is that reload
+    // without a round trip to be told so.
+    return (target && target.closest) ? target.closest('.fix-note, .fix-add') : null;
+  }
+
+  function fixPanel(step) {
+    return fixes.querySelector('.fix-panel[data-step="' + step + '"]');
+  }
+
+  // The note rows for one hand of one chord, in the order its panel shows them.  Both
+  // the playback and the focus below work from this, so they cannot come to filter
+  // differently: a pitch is only ever looked for inside the hand that was edited, and a
+  // page has plenty of other rows sounding the same pitch, some of them in panels that
+  // are not even showing.
+  function handRows(step, staff) {
+    var rows = [];
+    var panel = fixPanel(step);
+    if (!panel) { return rows; }
+    var forms = panel.querySelectorAll('.fix-note');
+    for (var i = 0; i < forms.length; i++) {
+      var field = forms[i].querySelector('input[name="staff"]');
+      if (field && field.value === staff) { rows.push(forms[i]); }
+    }
+    return rows;
+  }
+
+  // What one hand of one chord is sounding, as its panel says.  Read off the play buttons
+  // rather than out of the reading, because the panel is the thing that gets replaced,
+  // and this before and after is how the note that changed gets identified.
+  function handMidis(step, staff) {
+    var found = [];
+    handRows(step, staff).forEach(function (form) {
+      var button = form.querySelector('.fix-hear');
+      var midi = button ? buttonMidi(button) : null;
+      if (midi !== null) { found.push(midi); }
+    });
+    return found;
+  }
+
+  // The note a correction just made, when it made exactly one.  A difference on pitches
+  // and not on positions, because settling a chord re-sorts it and the note that moved is
+  // no longer in the row it was in.  Sharpening, flattening and moving each retire one
+  // pitch and bring another in; adding brings one in and retires none; removing retires
+  // one and brings in none, and then there is nothing new to hear.  Two notes landing on
+  // the same pitch is the one case with nothing new either, and silence beats a guess.
+  function newNote(was, now) {
+    var left = was.slice();
+    var fresh = [];
+    now.forEach(function (midi) {
+      var at = left.indexOf(midi);
+      if (at === -1) { fresh.push(midi); } else { left.splice(at, 1); }
+    });
+    return fresh.length === 1 ? fresh[0] : null;
+  }
+
+  // The count in "N note(s) corrected by hand".  The sentence is in the page; the page
+  // rendered the number, and a correction that lands without a page load has changed it.
+  function showEditCount(reading) {
+    var line = document.getElementById('edits-note');
+    var count = document.getElementById('edits-count');
+    var total = ((reading || {}).edits || []).length;
+    if (count) { count.textContent = String(total); }
+    if (line) { line.hidden = !total; }
+  }
+
+  // Which control was pressed, as something findable again after the swap.  Only the
+  // accidental buttons, because they are the ones pressed in a row: sharp, hear it, flat,
+  // hear that.  Move hides itself once the menu agrees with the note again and the bin
+  // leaves nothing behind to stand on, so for those the answer is to leave focus alone.
+  function pressedAgain(submitter) {
+    return (submitter && submitter.name === 'value' && submitter.value !== 'clear')
+      ? 'button[name="value"][value="' + submitter.value + '"]'
+      : '';
+  }
+
+  // The button the reader pressed is destroyed by the swap, so focus falls to the body
+  // and somebody working by keyboard loses their place in the panel.  Put them back on
+  // the same control in the row for the note that just changed: pressing sharp and then
+  // flat on one note should not mean tabbing in from the top of the page in between.
+  // Found by the note's new pitch rather than by its old row, because settling a chord
+  // re-sorts it.
+  function refocus(asked, midi) {
+    if (!asked.pressed || midi === null) { return; }
+    var rows = handRows(asked.step, asked.staff);
+    for (var i = 0; i < rows.length; i++) {
+      var button = rows[i].querySelector('.fix-hear');
+      if (!button || buttonMidi(button) !== midi) { continue; }
+      var again = rows[i].querySelector(asked.pressed);
+      if (again) { again.focus(); }
+      return;
+    }
+  }
+
+  // *answer* is the server's; *asked* is what this end knows about the click that
+  // caused it, which the server has no business being told: which panel and hand it was
+  // in, what that hand was sounding beforehand, and which control was pressed.
+  function applyEdit(answer, asked) {
+    var numbers = Object.keys(answer.panels || {});
+    for (var i = 0; i < numbers.length; i++) {
+      var panel = fixPanel(numbers[i]);
+      // innerHTML, so the .fix-panel itself is never replaced: overlay.js took its list
+      // of panels once, and each one carries which step it is and whether it is showing.
+      if (panel) {
+        panel.innerHTML = answer.panels[numbers[i]];
+        armPitchMenus(panel);
+      }
+    }
+    syncHear();
+    showEditCount(answer.document);
+
+    doc = window.SHEETER_DATA = answer.document;
+    systems = doc.systems || [];
+    if (!buildOverlay()) {
+      // The last notehead went with that edit.  There is nothing left to correct, and
+      // the page the server draws for a reading with no noteheads says so properly.
+      window.location.reload();
+      return;
+    }
+    // Not fromUser, which would play the whole chord: the chord did not ask to be heard,
+    // one note of it did, and that is the next thing below.
+    select(Math.min(selected || 1, steps.length), 'hold', false);
+    if (asked.heard) {
+      var midi = newNote(asked.heard, handMidis(asked.step, asked.staff));
+      if (midi !== null) {
+        playNote(midi);
+        refocus(asked, midi);
+      }
+    }
+  }
+
+  if (fixes) {
+    fixes.addEventListener('submit', function (e) {
+      var form = editForm(e.target);
+      if (!form) { return; }
+      if (busy) { e.preventDefault(); return; }
+      var submitter = e.submitter;
+      // The pressed button's own formaction, and only when it has one.  With the
+      // attribute absent the property is not the form's action, it is the address of this
+      // page, so reading it unguarded would post an accidental at /a/<id> instead of at
+      // /a/<id>/note -- and the accidental buttons are exactly the ones without it.
+      var action = (submitter && submitter.hasAttribute('formaction'))
+        ? submitter.formAction : form.action;
+      var data = new FormData(form);
+      // Which button was pressed is left out of FormData, and on these forms that is the
+      // whole instruction: the same four indices, with "sharp" or "flat" or nothing.
+      if (submitter && submitter.name) { data.append(submitter.name, submitter.value); }
+
+      var step = fieldValue(form, 'step_number');
+      var staff = fieldValue(form, 'staff');
+      var asked = {
+        step: step,
+        staff: staff,
+        // What the hand sounds now, to compare with what it sounds afterwards.
+        heard: (step && staff) ? handMidis(step, staff) : null,
+        pressed: pressedAgain(submitter)
+      };
+
+      e.preventDefault();
+      busy = true;
+      if (submitter) { submitter.setAttribute('aria-busy', 'true'); }
+
+      window.fetch(action, {
+        method: 'POST',
+        body: data,
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin'
+      }).then(function (answer) {
+        return answer.ok ? answer.json() : Promise.reject(answer.status);
+      }).then(function (answer) {
+        if (answer.reload || !answer.document) {
+          window.location.reload();
+          return;
+        }
+        applyEdit(answer, asked);
+        busy = false;
+        if (submitter) { submitter.removeAttribute('aria-busy'); }
+      }, function () {
+        // Any trouble at all: a status, a body that will not parse, a dropped
+        // connection.  Load the page again rather than post the form the old way, which
+        // is not the safe fallback it looks like -- deleting a chord renumbers the
+        // events, so a replayed post lands on a different one.  Worst case the reader
+        // presses the button a second time.
+        window.location.reload();
+      });
+    });
+  }
+
+  function fieldValue(form, name) {
+    var field = form.querySelector('input[name="' + name + '"]');
+    return field ? field.value : '';
+  }
+
   // fromUser says a person asked for this step, as opposed to the page settling itself.
   // Only a person's choice makes a sound, which is also what keeps the audio context's
   // first use inside a real gesture where the autoplay rules want it.
-  function select(number, scrollToDetail, fromUser) {
+  //
+  // *scroll* says what the window should do about it, and there are three answers rather
+  // than the two a boolean allowed.  'stage' brings the step's labels into view, which is
+  // what stepping wants: the labels you just asked for are no use below the fold.
+  // 'panel' goes to the fix panel, which is where a page loaded at #step-N is headed.
+  // 'hold' leaves the window exactly where it is, which is what a correction wants: the
+  // reader is already looking at the panel they just clicked in, and moving the page out
+  // from under them is the thing this whole change is here to stop.
+  function select(number, scroll, fromUser) {
     if (number < 1 || number > steps.length) { return; }
     selected = number;
     var step = steps[number - 1];
@@ -642,15 +906,18 @@
       }
     }
     showPanel(number);
+    rememberStep(number);
     layoutLabels();
     updateStepBar();
     if (mode === 'step') {
+      // The framing happens whatever the window is doing: it moves the photo inside the
+      // viewport, not the page, so it costs the reader nothing and leaves the label of a
+      // note that just moved where it can be seen.
       frameStep(step);
-      // Not when the caller is already sending the reader to the fix panel: two smooth
-      // scrolls in one turn fight each other.
-      if (!scrollToDetail) { keepStageVisible(step); }
+      // One scroll at a time.  Two smooth ones in a turn fight each other.
+      if (scroll === 'stage') { keepStageVisible(step); }
     }
-    if (scrollToDetail && panels.length) {
+    if (scroll === 'panel' && panels.length) {
       var panel = panels[Math.min(number, panels.length) - 1];
       if (panel) { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     }
@@ -688,12 +955,12 @@
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
     if (!selected && mode !== 'step') { return; }
-    if (e.key === 'ArrowRight') { e.preventDefault(); select(selected + 1, false, true); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); select(selected ? selected - 1 : 1, false, true); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); select(selected + 1, 'stage', true); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); select(selected ? selected - 1 : 1, 'stage', true); }
   });
 
-  if (stepPrev) { stepPrev.addEventListener('click', function () { select(selected - 1, false, true); }); }
-  if (stepNext) { stepNext.addEventListener('click', function () { select(selected + 1, false, true); }); }
+  if (stepPrev) { stepPrev.addEventListener('click', function () { select(selected - 1, 'stage', true); }); }
+  if (stepNext) { stepNext.addEventListener('click', function () { select(selected + 1, 'stage', true); }); }
 
   document.querySelectorAll('.mode-button').forEach(function (button) {
     button.addEventListener('click', function () { setMode(button.dataset.mode, true); });
@@ -961,8 +1228,8 @@
   // first step, which is what makes the panel a step's panel rather than a page's.
   var landed = stepFromHash();
   if (panels.length) {
-    armPitchMenus();
-    select(landed || 1, landed > 0, false);
+    armPitchMenus(fixes);
+    select(landed || 1, landed ? 'panel' : 'stage', false);
   }
 
   var pending = 0;
@@ -1036,6 +1303,29 @@
       }
     });
   }());
+
+  // Was an inline onsubmit with the correction count written into the sentence.  A
+  // correction lands without a page load now, so a written-in count goes stale; this
+  // reads it off the reading in hand.  The busy state comes along because the two were
+  // one attribute, and because a handler that can cancel the submit has to be the thing
+  // that decides whether to say "Re-analyzing".
+  var reanalyzeForm = document.getElementById('reanalyze-form');
+  if (reanalyzeForm) {
+    reanalyzeForm.addEventListener('submit', function (e) {
+      var count = ((doc && doc.edits) || []).length;
+      if (count && !window.confirm('Re-reading the photo starts over, so the ' + count +
+          ' correction(s) you made by hand will be cleared. Carry on?')) {
+        e.preventDefault();
+        return;
+      }
+      var button = reanalyzeForm.querySelector('button');
+      if (button) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        button.textContent = 'Re-analyzing';
+      }
+    });
+  }
 
   var copyButton = document.getElementById('copy-button');
   if (copyButton) {

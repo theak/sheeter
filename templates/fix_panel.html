@@ -1,0 +1,87 @@
+<% from sheeter.panels import ACCIDENTAL_BUTTONS %>
+      <h2>Step {{fix['number']}} of {{total}}<span class="fix-symbol">{{fix['symbol']}}</span></h2>
+%     if fix['common_name']:
+      <p class="common-name">{{fix['common_name']}}</p>
+%     end
+%     if fix['note']:
+      <p class="muted fix-model-note">{{fix['note']}}</p>
+%     end
+      <form action="/a/{{analysis_id}}/chord/delete" method="post" class="fix-delete"
+            onsubmit="return confirm('Delete this whole chord from the reading?');">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <button type="submit" class="secondary outline">Delete this chord</button>
+      </form>
+%     for hand in fix['hands']:
+      <h3 class="fix-hand">{{hand['label']}}</h3>
+%       if not hand['notes']:
+      <p class="muted">Nothing read on this staff here.</p>
+%       end
+%       for note in hand['notes']:
+%       # One form per notehead, not one per button: every control here names the same
+%       # notehead, so they share the hidden inputs and each button points itself at the
+%       # route it wants with formaction.  Five forms a note repeated the same four
+%       # indices five times over and put 36KB of it on a thirteen step page.  A "%"
+%       # comment and not an HTML one for the same reason: a comment in the markup is
+%       # emitted, and this loop runs once per notehead.
+      <form action="/a/{{analysis_id}}/note" method="post" class="fix-note">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="note" value="{{note['position']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+%       # Point at this, tap it, or tab to it and press Enter, to hear this note on its
+%       # own.  Nothing but overlay.js can make it work, so the column it sits in is only
+%       # cut into the row by a class overlay.js adds.
+        <button type="button" class="fix-hear" data-midi="{{note['midi']}}"
+                title="Hear {{note['pretty']}}"><span
+          class="visually-hidden">Hear {{note['pretty']}}</span></button>
+        <span class="fix-pitch">
+          <label class="visually-hidden"
+                 for="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}">Which note {{note['pretty']}} is</label>
+          <select id="p-{{fix['number']}}-{{hand['staff']}}-{{note['position']}}" name="step">
+%         for choice in hand['choices']:
+            <option value="{{choice['step']}}"{{!' selected' if choice['step'] == note['step'] else ''}}>{{choice['pretty']}}</option>
+%         end
+          </select>
+%         # Rendered visible: overlay.js hides it until the menu is actually changed,
+%         # so with no scripting the menu keeps the submit button it needs.
+          <button type="submit" class="fix-go secondary outline"
+                  formaction="/a/{{analysis_id}}/note/pitch">Move</button>
+        </span>
+%       for kind, glyph in ACCIDENTAL_BUTTONS:
+        <button type="submit" name="value" value="{{kind}}" class="fix-acc"
+                title="Make {{note['pretty']}} {{kind}}"
+                {{!'aria-current="true"' if note['current'] == kind else ''}}>{{glyph}}</button>
+%       end
+%       # A bin rather than a fourth accidental: removing a notehead is not one of the
+%       # three things that spell it, and the faint fill says so before the icon does.
+        <button type="submit" class="fix-acc fix-drop"
+                formaction="/a/{{analysis_id}}/note/delete"
+                title="Take {{note['pretty']}} out of this chord">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"
+               focusable="false"><path fill="currentColor"
+            d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9zm3 2v9h2v-9H9zm4 0v9h2v-9h-2z"/></svg>
+          <span class="visually-hidden">Remove {{note['pretty']}}</span>
+        </button>
+%       if note['by_hand']:
+        <button type="submit" name="value" value="clear" class="fix-acc fix-clear"
+                title="Undo the correction on {{note['pretty']}}">undo</button>
+%       end
+      </form>
+%       end
+      <form action="/a/{{analysis_id}}/note/add" method="post" class="fix-add">
+        <input type="hidden" name="system" value="{{fix['system']}}">
+        <input type="hidden" name="event" value="{{fix['event']}}">
+        <input type="hidden" name="staff" value="{{hand['staff']}}">
+        <input type="hidden" name="step_number" value="{{fix['number']}}">
+        <label for="a-{{fix['number']}}-{{hand['staff']}}">Add a note</label>
+        <select id="a-{{fix['number']}}-{{hand['staff']}}" name="step">
+%       for choice in hand['choices']:
+          <option value="{{choice['step']}}"{{!' selected' if choice['step'] == hand['add_default'] else ''}}>{{choice['pretty']}}</option>
+%       end
+        </select>
+        <button type="submit" class="secondary outline">Add</button>
+      </form>
+%     end
