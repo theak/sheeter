@@ -59,7 +59,19 @@ must occupy, not what letter each glyph is nearest. Asking for the letter is the
 round, since on a photocopy a flat's bowl measured over half a step high and the lone flat of a
 B flat signature came out as a C, which lost the page its key and read every B in it natural. Accidentals written in the bar are
 applied to the notes after them, ledger lines are confirmed before a note outside the staff is
-believed, and stems group noteheads into chords.
+believed, and stems group noteheads into chords. A ledger line has to be a line: the run of ink at
+its height must reach out past any notehead, and where it does it must be staff-line thin. The
+second half is there because a whole note is wider than the outline the reader looks for, and its
+own rim reached far enough to pass as the ledger line it was missing.
+
+On a grand staff, both staves look for noteheads across the whole gap between them, and a note
+belongs to the staff whose ledger lines are really there. The midpoint of the gap used to decide,
+and it is right for a note one ledger line out and wrong for one two ledgers out: in a gap under
+four spaces wide the right hand's A3 sits past the middle, so the bass either claimed it (as a D4,
+with the whole note's own rim as its ledger line) or threw it away. On one photocopied page that
+was every low whole note in the right hand. Where the two staves' ledger rows coincide, which they
+do in a gap of exactly three spaces, both can account for the note and the midpoint still decides,
+as it always did.
 6. **Naming.** Every pitch class present is tried as the root of the chord, each reading is
 charged for what makes it unlikely, and the cheapest wins. See below.
 

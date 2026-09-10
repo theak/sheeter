@@ -27,7 +27,7 @@ from .preprocess import estimate_scale, run_lengths
 #: and on re-upload, when its version is not this one.  Without that, an image analysed
 #: before a fix keeps showing the reading from before the fix, forever, because uploads
 #: are content addressed and the old reading is what the address points at.
-GEOMETRY_VERSION = "6"
+GEOMETRY_VERSION = "7"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
@@ -38,6 +38,10 @@ RESPONSE_MIN = 0.72     # fraction of the notehead outline that must be inked
 FLANK_MIN = 0.55        # of that, how much of the left and right flanks must be inked
 GRID_TOLERANCE = 0.34   # how far off the half-space grid a notehead may sit
 STAFF_REACH = 6.0       # staff spaces above/below a staff that still belong to it
+GAP_MARGIN = 0.5        # how close to the other staff's outer line a grand staff's
+                        # search for noteheads reaches across the gap between them
+LEDGER_STUB_THICKNESS = 2.0   # a ledger line is this many staff-line thicknesses
+                              # tall at most; a notehead's wall is half a space
 
 #: Staff space, in pixels, below which the reading stops being trustworthy.  Measured
 #: by shrinking fixtures until they broke: at 18 and up the corpus still reads
@@ -372,6 +376,9 @@ def staff_band(staves, index, unit, height):
 
     Bounded by the midpoint to its neighbours so a grand staff never counts the same
     notehead twice, and by STAFF_REACH otherwise, which is about five ledger lines.
+    This is the band for glyphs, stems and the signatures.  The search for noteheads
+    on a grand staff reaches further, see _search_bands: which staff a notehead in the
+    gap belongs to is not a question the midpoint can answer.
     """
     staff = staves[index]
     top = staff["lines"][0] - unit * STAFF_REACH
@@ -742,7 +749,37 @@ def _ledger_row_ok(mask, x, staff, unit, thickness, k):
     # total run would let a notehead's own body, which is 1.3 spaces wide, vouch for a
     # ledger that was never drawn.
     reach_out = max(column - left, right - column)
-    return reach_out >= unit * 0.78
+    if reach_out < unit * 0.78:
+        return False
+    # And the part that sticks out has to be a line.  A whole note is wider than the
+    # 1.3 spaces the test above allows for, so when a rung falls on its rim its own
+    # walls reach far enough to pass: that is how a right-hand whole note two ledgers
+    # below the treble was claimed by the bass as a note one ledger above it, with
+    # the note's own bottom as the ledger.  A ledger line is as thick as a staff line
+    # and a notehead's wall is half a space tall, so somewhere in the stub, past where
+    # any notehead reaches, the ink has to be thin.  Either side will do: the other
+    # may have a displaced second or an accidental sitting on it.
+    limit = max(3, int(round(thickness * LEDGER_STUB_THICKNESS)))
+    footprint = int(round(unit * 0.7))
+    for columns in (range(left, column - footprint + 1),
+                    range(column + footprint, right + 1)):
+        if any(0 < _ink_height(mask, lo, hi, c) <= limit for c in columns):
+            return True
+    return False
+
+
+def _ink_height(mask, lo, hi, column):
+    """Height of the ink that passes through rows *lo*..*hi* at *column*, 0 if none."""
+    col = mask[:, column]
+    rows = np.flatnonzero(col[lo:hi])
+    if rows.size == 0:
+        return 0
+    top, bottom = lo + int(rows[0]), lo + int(rows[-1])
+    while top > 0 and col[top - 1]:
+        top -= 1
+    while bottom + 1 < col.size and col[bottom + 1]:
+        bottom += 1
+    return bottom - top + 1
 
 
 def _thick_run(row, x):
@@ -898,9 +935,9 @@ def detect_noteheads(mask, mask_ns, staff, band, unit, thickness, x_from,
     of the notehead it belongs to, so ruling out its box costs nothing.
     """
     # Correlate over a little more than the band, then keep only peaks whose centre is
-    # inside it.  The band ends at the midpoint to the next staff so that a grand staff
-    # never counts one notehead twice, and ownership still works that way.  But a
-    # notehead centred half a space inside that edge has its template hanging off the
+    # inside it.  On a grand staff the band handed in reaches across the gap to the
+    # other staff, and _settle_gap sorts out what both staves find.  But a notehead
+    # centred half a space inside the band's edge has its template hanging off the
     # end of the region, scores low, and is lost: on two pages that was a right-hand
     # note reaching down into the gap, the lowest note of its chord each time.
     # A staff ends with a barline, and the thick one that ends a piece is a notehead's
@@ -1463,6 +1500,68 @@ def _assign_clefs(members):
             member["hand"] = None
 
 
+def _search_bands(members, unit):
+    """Where each staff of a system looks for noteheads.
+
+    A lone staff looks in its own band.  The two staves of a grand staff each look
+    across the whole gap between them, to GAP_MARGIN short of the other's outer line
+    and never past STAFF_REACH, and a notehead both find goes to the nearer one.
+
+    The midpoint alone gets the gap wrong.  It is right for a note one ledger out, but
+    a right hand's note two ledgers below the treble is past the middle of a gap under
+    four spaces wide, and the bass either claims it or throws it away: on one page
+    that was every note the right hand had down there, six chords of fifty.  Each
+    staff already demands the ledger lines a note that far out would need, at its own
+    spacing, and only the staff the note belongs to has them.
+    """
+    if len(members) != 2:
+        return [member["band"] for member in members]
+    upper, lower = members[0]["staff"], members[1]["staff"]
+    return [
+        (members[0]["band"][0],
+         int(min(lower["lines"][0] - unit * GAP_MARGIN,
+                 upper["lines"][-1] + unit * STAFF_REACH))),
+        (int(max(upper["lines"][-1] + unit * GAP_MARGIN,
+                 lower["lines"][0] - unit * STAFF_REACH)),
+         members[1]["band"][1]),
+    ]
+
+
+def _settle_gap(members, unit):
+    """A notehead both staves of a grand staff found belongs to the nearer one.
+
+    The two searches overlap across the gap, so a note either staff can account for,
+    with the ledger lines it would need, is found twice.  That happens where the two
+    staves' ledger rows coincide, which the midpoint has always settled and still does.
+    A note only one staff can account for is that staff's, whichever side it is on.
+    """
+    if len(members) != 2:
+        return
+    upper, lower = members
+    divide = upper["band"][1]
+    for note in list(upper["notes"]):
+        twin = next((other for other in lower["notes"]
+                     if abs(other["x"] - note["x"]) < unit * 0.55
+                     and abs(other["raw_y"] - note["raw_y"]) < unit * 0.45), None)
+        if twin is None:
+            continue
+        if note["raw_y"] < divide:
+            lower["notes"].remove(twin)
+        else:
+            upper["notes"].remove(note)
+
+
+def _outside_signature(accidentals, key_used):
+    """The accidentals that are not the key signature, matched by where they are.
+
+    By position rather than identity because the accidentals a grand staff attaches
+    come from a search wider than the band the signature was read in, and the same
+    glyph found twice is two dicts.
+    """
+    used = set((round(a["x0"]), round(a["x1"])) for a in key_used)
+    return [a for a in accidentals if (round(a["x0"]), round(a["x1"])) not in used]
+
+
 def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thickness,
                  system_index, width, height, warnings):
     per_staff, staff_docs, key_ends = {}, [], {}
@@ -1484,10 +1583,24 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
     kinds = set(run[0]["kind"] for _accidentals, run in found if run)
     signatures_disagree = len(kinds) > 1
 
+    # Every staff reads its signatures and finds its noteheads before anything is made
+    # of them, because on a grand staff which staff a notehead in the gap belongs to is
+    # settled between the two, once both have looked.  The accidentals each staff
+    # excludes from its search are everyone's: a flat in the gap is in one staff's band
+    # and may be cut in half by the edge of the other's, and a glyph cut in half is not
+    # an accidental to the classifier but is still a notehead outline to the correlator.
+    searches = _search_bands(members, unit)
+    for position, member in enumerate(members):
+        member["search"] = searches[position]
+        member["accidentals"] = (
+            found[position][0] if member["search"] == member["band"]
+            else detect_accidentals(cleaned, member["search"], unit, member["clef_end"],
+                                    thickness))
+    boxes = [acc for member in members for acc in member["accidentals"]]
+
     for position, member in enumerate(members):
         staff, band, clef = member["staff"], member["band"], member["clef"]
-        stems = detect_stems(cleaned, band, unit)
-        accidentals, key_used = found[position]
+        _accidentals, key_used = found[position]
         if signatures_disagree:
             key_used = []
 
@@ -1504,8 +1617,17 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
         key_end = key_used[-1]["x1"] if key_used else member["clef_end"]
         time_end, _time_start = time_signature_edge(cleaned, staff, band, unit, key_end,
                                                     thickness)
-        notes = detect_noteheads(mask, cleaned, staff, band, unit, thickness, time_end,
-                                 accidentals)
+        member["notes"] = detect_noteheads(mask, cleaned, staff, member["search"], unit,
+                                           thickness, time_end, boxes)
+        member["signature"] = (fifths, key_conf, key_used, key_end)
+
+    _settle_gap(members, unit)
+
+    for position, member in enumerate(members):
+        staff, band, clef = member["staff"], member["band"], member["clef"]
+        fifths, key_conf, key_used, key_end = member["signature"]
+        notes = member["notes"]
+        stems = detect_stems(cleaned, band, unit)
 
         bottom = pitches.CLEF_BOTTOM_LINE_STEP[clef]
         for note in notes:
@@ -1516,11 +1638,11 @@ def _read_system(mask, cleaned, strong_lines, members, staff_indices, unit, thic
             note["dotted"] = False
 
         mark_barlines(stems, notes, unit)
-        free = [a for a in accidentals if a not in key_used]
+        free = _outside_signature(member["accidentals"], key_used)
         attach_accidentals(notes, free, unit, staff, clef)
         barlines = [s["x"] for s in stems if s["barline"]]
         apply_alterations(notes, fifths, barlines)
-        detect_dots(cleaned, band, unit, notes)
+        detect_dots(cleaned, member["search"], unit, notes)
 
         cut_off = (staff["lines"][0] < unit * 1.2
                    or staff["lines"][-1] > height - unit * 1.2

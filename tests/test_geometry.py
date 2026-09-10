@@ -714,3 +714,115 @@ class TestStemInATimeSignature:
     def test_a_wide_column_is_not_a_stem(self):
         block = np.ones((90, 30), dtype=bool)           # solid, every column is tall
         assert not geometry._has_stem(block, thickness=4)
+
+
+class TestGrandStaffGap:
+    """Which staff owns a notehead in the gap between the two staves of a grand staff.
+
+    The midpoint of the gap is right for a note one ledger line out and wrong for one
+    two ledgers out: in a gap under four spaces wide the right hand's A3 sits past the
+    middle, where the bass used to claim it as a D4, with the whole note's own rim as
+    the ledger line, or throw it away.  Both staves now look across the whole gap, each
+    demanding the ledger lines the note would need at its own spacing, and only where
+    both can account for a note does the midpoint still decide.
+    """
+
+    UNIT = 20
+
+    def _grand_staff(self, gap_spaces):
+        unit = self.UNIT
+        upper, lines = staff_image(unit=unit, height=440)
+        lower_top = 60 + 4 * unit + int(gap_spaces * unit)
+        lower, lower_lines = staff_image(unit=unit, height=440, top=lower_top)
+        mask = upper | lower
+        mask[60:lower_top + 4 * unit + 2, 45:48] = True      # the barline joining them
+        return mask, lines, lower_lines
+
+    def _whole_note(self, mask, x, y):
+        """A whole note: wider than the outline template and hollow, walls thick."""
+        kernel = geometry.ellipse_kernel(self.UNIT, width=1.75).astype(bool)
+        kernel &= ~geometry._shrink(kernel, int(self.UNIT * 0.3))
+        kh, kw = kernel.shape
+        mask[int(y) - kh // 2:int(y) - kh // 2 + kh, x - kw // 2:x - kw // 2 + kw] |= kernel
+
+    def _ledger(self, mask, x, y):
+        mask[int(y):int(y) + 2, x - 24:x + 25] = True         # about 2.4 spaces wide
+
+    def _hands(self, mask):
+        systems, _warnings = geometry.analyze(mask)
+        assert len(systems) == 1 and systems[0]["grand"]
+        out = {}
+        for event in systems[0]["events"]:
+            for part in event["parts"]:
+                out.setdefault(part["hand"], []).extend(
+                    (round(n["x"]), n["name"]) for n in part["notes"])
+        return out
+
+    def test_a_right_hand_note_past_the_midpoint_stays_with_the_right_hand(self):
+        mask, lines, _ = self._grand_staff(gap_spaces=3.5)
+        y = lines[4] + 2 * self.UNIT          # two ledgers below the treble: A3
+        assert y > (lines[4] + lines[4] + 3.5 * self.UNIT) / 2, "past the midpoint"
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lines[4] + self.UNIT)
+        self._ledger(mask, 300, y)
+        assert self._hands(mask) == {"right": [(300, "A3")]}
+
+    def test_a_left_hand_note_past_the_midpoint_stays_with_the_left_hand(self):
+        mask, lines, lower = self._grand_staff(gap_spaces=3.5)
+        y = lower[0] - 2 * self.UNIT          # two ledgers above the bass: E4
+        assert y < (lines[4] + lower[0]) / 2, "past the midpoint the other way"
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lower[0] - self.UNIT)
+        self._ledger(mask, 300, y)
+        assert self._hands(mask) == {"left": [(300, "E4")]}
+
+    def test_where_both_staves_ledger_rows_coincide_the_midpoint_still_decides(self):
+        """In a gap of exactly three spaces the treble's second ledger row is the
+        bass's first, so a note there is either hand's by geometry alone.  Both find
+        it, and the nearer staff keeps it, which is what always happened."""
+        mask, lines, lower = self._grand_staff(gap_spaces=3.0)
+        y = lines[4] + 2 * self.UNIT
+        assert abs(y - (lower[0] - self.UNIT)) < 1
+        self._whole_note(mask, 300, y)
+        self._ledger(mask, 300, lines[4] + self.UNIT)
+        self._ledger(mask, 300, y)
+        hands = self._hands(mask)
+        assert sum(len(v) for v in hands.values()) == 1, "found once, not twice"
+        assert hands == {"left": [(300, "C4")]}
+
+
+class TestLedgerStubIsALine:
+    """A ledger line is as thick as a staff line.  A notehead's wall is not."""
+
+    UNIT = 20
+
+    def _staff_with_wide_hollow_note_above(self, with_ledger):
+        unit = self.UNIT
+        mask, lines = staff_image(unit=unit, height=300, top=150)
+        staff = {"lines": lines, "unit": float(unit), "x_range": [40, 560]}
+        y = lines[0] - 1.5 * unit             # the space above the first ledger line
+        kernel = geometry.ellipse_kernel(unit, width=1.75).astype(bool)
+        kernel &= ~geometry._shrink(kernel, int(unit * 0.3))
+        kh, kw = kernel.shape
+        mask[int(y) - kh // 2:int(y) - kh // 2 + kh, 300 - kw // 2:300 - kw // 2 + kw] |= kernel
+        if with_ledger:
+            mask[int(lines[0] - unit):int(lines[0] - unit) + 2, 276:325] = True
+        return mask, staff
+
+    def _read(self, mask, staff):
+        thickness, unit = geometry.estimate_scale(mask)
+        cleaned = geometry.remove_staff_lines(
+            mask, geometry.staff_line_mask(mask, thickness, unit), thickness, unit)
+        return geometry.detect_noteheads(mask, cleaned, staff, (0, mask.shape[0]),
+                                         float(self.UNIT), thickness, 100)
+
+    def test_a_whole_notes_own_rim_is_not_the_ledger_line_it_needs(self):
+        """The rung it needs falls exactly on its bottom rim, and a whole note is wide
+        enough for that rim to reach as far out as a ledger line would.  It is still
+        half a space tall there, and a line is two pixels."""
+        mask, staff = self._staff_with_wide_hollow_note_above(with_ledger=False)
+        assert self._read(mask, staff) == []
+
+    def test_with_the_ledger_line_drawn_it_is_a_note(self):
+        mask, staff = self._staff_with_wide_hollow_note_above(with_ledger=True)
+        assert [note["k"] for note in self._read(mask, staff)] == [11]
