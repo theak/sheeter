@@ -159,7 +159,7 @@ def _write_doc(directory, doc):
 
 
 def save_doc(doc):
-    """Re-write just ``analysis.json``, after a rename or a verify pass."""
+    """Re-write just ``analysis.json``, after a rename, a key pick or a correction."""
     schema.validate_analysis(doc)
     directory = _dir(doc["id"])
     if not os.path.isdir(directory):
@@ -268,7 +268,6 @@ def _entry(ident, directory):
         "note_count": notes,
         "system_count": len(doc["systems"]),
         "event_count": events,
-        "verified": bool((doc.get("engine") or {}).get("verified")),
         "summary": _summary(doc),
         "_sort": _timestamp(doc, directory),
     }

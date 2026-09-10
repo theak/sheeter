@@ -122,11 +122,7 @@ safe_json = analysis_json.replace("<", "\\u003C")
       </form>
     </div>
     <p class="muted summary-row">
-% if engine['verified']:
-      <span class="badge badge-ok">Checked by Claude</span>
-% else:
       <span class="badge">Geometry only</span>
-% end
       {{len(doc['systems'])}} system{{'' if len(doc['systems']) == 1 else 's'}},
       {{len(fix_steps)}} step{{'' if len(fix_steps) == 1 else 's'}},
       read from a {{image['width']}}&times;{{image['height']}} image.</p>
@@ -150,19 +146,7 @@ safe_json = analysis_json.replace("<", "\\u003C")
     version {{engine_version}} and reads some pages differently. Re-analyze to bring it up
     to date. The photo is still here.</p>
 % end
-% if engine['verified']:
-    <p>The geometry reading was reviewed against the photo by
-    <strong>{{engine['verifier'] or 'the vision model'}}</strong>, and its corrections applied.</p>
-% elif engine['verifier_error']:
-    <p class="muted">The check did not run: {{engine['verifier_error']}}</p>
-% end
     <div class="provenance-actions">
-% if not engine['verified'] and verify_available:
-      <form action="/a/{{analysis_id}}/verify" method="post" class="inline-form"
-            onsubmit="var b=this.querySelector('button');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Asking Claude, this takes a few seconds';">
-        <button type="submit">Verify with Claude</button>
-      </form>
-% end
       <!-- Always offered, not only when the reading is stale: after pulling a change to
            the reader, this is how a page already in the gallery gets the new reading. -->
       <form action="/a/{{analysis_id}}/reanalyze" method="post" class="inline-form"
@@ -173,8 +157,8 @@ safe_json = analysis_json.replace("<", "\\u003C")
 %     end
         <button type="submit" class="secondary">Re-analyze</button>
       </form>
-      <!-- Copying the reading out is a thing you do to the whole reading, like the two
-           above it, so it sits with them rather than over the panels. -->
+      <!-- Copying the reading out is a thing you do to the whole reading, like the one
+           above it, so it sits with it rather than over the panels. -->
       <button type="button" id="copy-button"
               class="secondary outline js-only">Copy as text</button>
 %     if doc['edits']:

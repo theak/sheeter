@@ -8,7 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, redirect, request, response, static_file, template
 
-from sheeter import geometry, keysig, pipeline, pitches, store, verify
+from sheeter import geometry, keysig, pipeline, pitches, store
 
 app = Bottle()
 
@@ -18,12 +18,6 @@ bottle.TEMPLATE_PATH.insert(0, os.path.join(BASE_DIR, "templates"))
 
 #: Phone photos are big.  Anything past this is not a photo of one page of music.
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
-
-#: When the Claude pass runs.  "manual" is the default and means the button on the
-#: analysis page: the geometry reading is what the app is for, it takes a second or
-#: two, and the vision pass adds five to twenty-five on top for a second opinion that
-#: on a clear photo says the same thing.  Set "auto" to run it on every upload anyway.
-VERIFY_MODE = (os.environ.get("SHEETER_VERIFY") or "manual").strip().lower()
 
 EXTENSIONS = {
     "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
@@ -43,14 +37,10 @@ def _safe_next(default):
     return wanted if SAFE_NEXT.match(wanted) else default
 
 
-def _verify_offered():
-    return VERIFY_MODE != "off" and verify.available()
-
-
 def _render_index(error=None, status=200):
     response.status = status
     return template("index.html", items=store.listing(), usage=store.usage(),
-                    verify_available=_verify_offered(), error=error)
+                    error=error)
 
 
 @app.route("/")
@@ -71,8 +61,7 @@ def favicon():
 @app.route("/health")
 def health():
     usage = store.usage()
-    return {"ok": True, "analyses": usage["count"], "verify": _verify_offered(),
-            "verify_mode": VERIFY_MODE}
+    return {"ok": True, "analyses": usage["count"]}
 
 
 @app.route("/upload", method="POST")
@@ -123,9 +112,6 @@ def _analyze_and_save(raw, filename, content_type, extension, previous=None):
     """
     document, processed = pipeline.analyze_bytes(
         raw, filename, content_type, title=previous["title"] if previous else None)
-    if VERIFY_MODE == "auto" and verify.available():
-        document = verify.verify_analysis(document, processed)
-        pipeline.name_everything(document)
     _keep_picked_key(document, previous)
     return store.save(document, raw, extension, processed)
 
@@ -174,7 +160,6 @@ def show(analysis_id):
     return template("analysis.html", doc=document,
                     analysis_json=json.dumps(document),
                     items=store.listing(limit=12),
-                    verify_available=_verify_offered(),
                     stale=not _current(document),
                     engine_version=geometry.GEOMETRY_VERSION,
                     keysig=keysig, key_fifths=keysig.current(document),
@@ -405,8 +390,8 @@ def _back_to(analysis_id):
 def _save_edited(analysis_id, document):
     """Write back an edited reading without clobbering a concurrent rename.
 
-    The same care reverify takes, for the same reason: the document was read before
-    the edit and only the reading and its edit log are this request's to write.
+    Waitress serves other requests while this one runs, so the document was read
+    before the edit and only the reading and its edit log are this request's to write.
     """
     try:
         latest = store.load(analysis_id)
@@ -424,36 +409,6 @@ def delete(analysis_id):
     except ValueError:
         pass
     return redirect("/")
-
-
-@app.route("/a/<analysis_id>/verify", method="POST")
-def reverify(analysis_id):
-    document = _load(analysis_id)
-    if document is None:
-        return _render_index("That analysis is no longer here.", 404)
-    if not _verify_offered():
-        return redirect("/a/%s" % analysis_id)
-    with open(store.path(analysis_id, "processed.png"), "rb") as handle:
-        document = verify.verify_analysis(document, handle.read())
-    pipeline.name_everything(document)
-    # Last word to the person who looked at the page.  The vision pass re-reads every
-    # accidental off the image, so without this it quietly undoes a hand correction.
-    pipeline.apply_edits(document)
-    # A picked key needs no defending here: every path through verify_analysis either
-    # hands back this document untouched or goes through apply_correction, which puts
-    # the reader's key back itself.
-
-    # The call above takes five to twenty-five seconds, and waitress serves other
-    # requests meanwhile.  Writing back the copy read before it would quietly undo a
-    # rename made in that window, so re-read and carry over only what the pass owns.
-    try:
-        latest = store.load(analysis_id)
-    except (KeyError, ValueError):
-        return redirect("/")
-    for field in ("systems", "engine", "warnings", "edits"):
-        latest[field] = document[field]
-    store.save_doc(latest)
-    return redirect("/a/%s" % analysis_id)
 
 
 if __name__ == "__main__":

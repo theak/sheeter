@@ -55,9 +55,6 @@ def new_analysis(analysis_id, created_at, title, source, image):
         "image": image,
         "engine": {
             "geometry": "1",
-            "verifier": None,
-            "verified": False,
-            "verifier_error": None,
         },
         "warnings": [],
         "systems": [],
@@ -82,10 +79,20 @@ def normalize(doc):
     guess: it is what a page with no barline detected on it stores anyway, and both
     mean the same thing to the code that reads it, that the staff is one measure from
     end to end.  Re-analyzing such a reading fills them in properly.
+
+    The same door works in the other direction.  ``engine`` once carried three fields
+    for a vision pass that checked the reading against the photo; that pass is gone,
+    and a reading it wrote is still a reading, so the fields are dropped here rather
+    than refused by the validator.  Its corrected pitches stay, since they are the
+    reading, and the ``changed`` marks and per-step notes it left stay with them.
     """
     if isinstance(doc, dict):
         doc.setdefault("key_override", None)
         doc.setdefault("edits", [])
+        engine = doc.get("engine")
+        if isinstance(engine, dict):
+            for gone in ("verifier", "verified", "verifier_error"):
+                engine.pop(gone, None)
         for system in doc.get("systems") or []:
             if not isinstance(system, dict):
                 continue
@@ -146,8 +153,7 @@ def validate_analysis(doc):
     _require(doc["source"], ("filename", "content_type", "bytes", "width", "height"),
              "source")
     _require(doc["image"], ("width", "height", "scale", "deskew_deg"), "image")
-    _require(doc["engine"], ("geometry", "verifier", "verified", "verifier_error"),
-             "engine")
+    _require(doc["engine"], ("geometry",), "engine")
     if not isinstance(doc["warnings"], list):
         raise SchemaError("warnings: expected a list")
     override = doc["key_override"]

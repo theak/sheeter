@@ -76,11 +76,7 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
               <span>{{(item['created_at'] or '')[:10] or 'undated'}}</span>
               <span>{{item['note_count']}} notes</span>
               <span>{{item['event_count']}} steps</span>
-%             if item['verified']:
-              <span class="badge badge-ok">checked by Claude</span>
-%             else:
               <span class="badge">geometry only</span>
-%             end
             </span>
           </span>
         </a>
@@ -121,14 +117,9 @@ usage_mb = usage.get("bytes", 0) / 1048576.0
     <p>Sheeter finds the staff lines in your photo, measures where every notehead sits against
     them, and turns those positions into pitches using the clef and key signature it reads off
     the front of each staff. Then it names the chord each group of notes makes.</p>
-    % if verify_available:
-    <p>Every reading is measured this way first. You can then ask Claude to look at the photo
-    alongside it and check the hard parts, from the button on the reading itself. Each reading
-    says plainly whether that has happened.</p>
-    % else:
-    <p>Set an Anthropic API key and you also get a button to have Claude look at the photo and
-    check the reading. Without one you get the measured reading, which is what the app is.</p>
-    % end
+    <p>No model looks at the photo: every pitch is measured. When the measurement is wrong,
+    each step on a reading has controls to fix a note, add or remove one, or drop the chord, and
+    the fix is kept.</p>
     <p>It is not a transcription tool. There is no rhythm beyond hollow-or-filled, and no output
     file. It answers one question: what notes am I looking at here?</p>
   </section>

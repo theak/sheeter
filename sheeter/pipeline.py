@@ -54,7 +54,7 @@ def name_everything(document):
         keys = dict((staff["index"], staff["key_fifths"]) for staff in system["staves"])
         # Per staff, because name_chord's tie-break asks what that hand played last, and
         # the two hands are separate lines.  It was being tracked and never passed, so
-        # the geometry path and the verifier's renaming chained differently.
+        # the first reading and a later renaming chained differently.
         previous = {}
         for event in system["events"]:
             pooled = []
@@ -124,9 +124,8 @@ def restate_staff(system, staff):
     """Re-derive every pitch on *staff* from its y, under the current clef and key.
 
     A corrected clef or key signature invalidates the reading of every notehead
-    on the staff, not only the ones the model bothered to mention.  Notes whose
-    name moves are marked changed: the verifier did change them, by way of the
-    clef, and the overlay should say so.
+    on the staff.  Notes whose name moves are marked changed: the correction did
+    change them, by way of the clef or the key, and the overlay should say so.
     """
     alterations = pitches.key_alterations(staff["key_fifths"])
     for _event, part in staff_notes(system, staff["index"]):
@@ -153,9 +152,7 @@ def set_key(document, fifths):
     pitches under it.
 
     The confidence goes to 1.0 rather than staying where the geometry left it.  A person
-    who has the page in front of them is a better source than the measurement, and
-    ``verify.geometry_is_sure`` reads this field, so it also stops the vision pass
-    quietly putting its own key back.
+    who has the page in front of them is a better source than the measurement.
     """
     fifths = int(fifths)
     if not -7 <= fifths <= 7:
@@ -218,8 +215,8 @@ def measure_accidentals(system, staff):
 
     Deliberately not folded into :func:`restate_staff`, which ignores the measure rule
     and so drops a carried accidental every time a key is picked.  That is a real
-    inconsistency, but it is on the path every key change and every verify pass takes,
-    and changing it would move readings that have nothing to do with a manual edit.
+    inconsistency, but it is on the path every key change takes, and changing it
+    would move readings that have nothing to do with a manual edit.
     """
     alterations = pitches.key_alterations(staff["key_fifths"])
     edges = sorted(staff["barlines"])

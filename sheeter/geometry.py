@@ -1297,8 +1297,8 @@ def _one_part_per_staff(entries):
     where the two noteheads are far enough apart vertically to be clustered separately
     and close enough in x to be simultaneous.  They are simultaneous, so they are one
     chord.  Leaving them as two parts breaks an invariant everything downstream leans
-    on: the verifier resolves the model's per-staff correction onto whichever part it
-    finds first and writes a corrected pitch onto the wrong notehead.
+    on: a correction is resolved onto the one part a staff has in an event, and a
+    second part would take a corrected pitch onto the wrong notehead.
     """
     merged = {}
     for entry in entries:

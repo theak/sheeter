@@ -63,27 +63,18 @@ believed, and stems group noteheads into chords.
 charged for what makes it unlikely, and the cheapest wins. See below.
 
 The only runtime dependencies are numpy, scipy, Pillow, pillow-heif, bottle and waitress.
-Two libraries were in there and are not any more: music21, for one field, and the anthropic SDK,
-which `sheeter/claude.py` replaces with about a hundred lines of `urllib`. See below for both.
+music21 was in there too, for one field, and is not any more. See below.
 
-### The Claude pass
+### No model looks at the photo
 
-There is an optional second pass that sends the processed image, zoomed crops of each system, and
-the current reading to Claude, and asks for a corrected reading back. It does not run on every
-upload. `SHEETER_VERIFY` is `manual` by default, which puts a "Verify with Claude" button on the
-analysis page; `auto` runs it on upload, `off` hides it. It needs `ANTHROPIC_API_KEY` set and
-nothing else installed, and it adds five to twenty-five seconds.
-
-What comes back is also merged narrowly. A system is only overruled where the geometry admitted
-doubt: the system is cut off by the frame, or a clef or key signature was read with confidence
-under 0.9, or a notehead came in under 0.88. Everywhere else the pitches, clef and key go back to
-what the geometry measured and only the model's commentary is kept.
-
-That is not hedging, it is what the measurement said. On the fixture corpus at the time the two
-were compared, the geometry read 157 of 157 noteheads and the vision pass read 151. All six of
-its losses were notes on ledger lines, where counting staff positions by eye is exactly what a
-language model is worst at. So the model arbitrates where the geometry is unsure and comments
-where it is not.
+There used to be an optional second pass that sent the processed image and the reading to a
+vision model and merged a corrected reading back. It is gone. It shipped broken, the fix was not
+a small one, and what it was for is covered better by the fix panels below: a person who has the
+page in front of them corrects a misread note in two taps, and the correction is kept, where the
+model's answer was slow, cost a call per page, and was only trusted where the geometry admitted
+doubt in the first place. Every reading now says "Geometry only" and means it. The three
+`engine` fields the pass wrote are dropped by `schema.normalize` on the way in, so readings saved
+while it existed still open; their pitches are the reading and stay.
 
 ### How accurate it is
 
@@ -179,8 +170,7 @@ whole thing as a reading aid and check it against the page.
 docker run -d -p 5000:5000 -v sheeter-data:/data --restart unless-stopped akshaykannan/sheeter
 ```
 
-Add `-e ANTHROPIC_API_KEY=sk-ant-...` if you want the Claude pass. The volume is worth keeping:
-that is where your previous analyses live.
+The volume is worth keeping: that is where your previous analyses live.
 
 Or with docker compose:
 ```yaml
@@ -191,9 +181,6 @@ services:
       - "5000:5000"
     volumes:
       - sheeter-data:/data
-    environment:
-      # optional, enables the Claude verify button
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     restart: unless-stopped
 
 volumes:
@@ -229,7 +216,7 @@ Uploads are content addressed by sha256, so re-uploading or re-pasting the same 
 analysis you already have instead of computing it twice. Unless the reader has changed since: every
 analysis records the engine version that made it, and when that is not the version running now,
 re-uploading reads the page again, keeping the title you gave it. Every reading also has a "Re-analyze"
-button beside "Verify with Claude" that runs the current reader over the stored photo, and a
+button that runs the current reader over the stored photo, and a
 reading made by an older engine says so at the top of its page, so what is already in the gallery
 can be brought up to date without finding the file. Otherwise a page analysed before a fix would
 show the reading from before the fix for as long as it stayed in the store.
@@ -244,8 +231,7 @@ printed on your photo, tap it, and every note is spelled again and every chord n
 arithmetic on the reading already stored, not a second look at the photo, so it returns at once.
 
 The choice is remembered on the reading and outlives it. Re-analyze keeps it, since a better
-reading of the page does not make the key a different key, and the Claude pass will not overrule it,
-since somebody holding the page beats a model on what the signature is. "Use the key read from the
+reading of the page does not make the key a different key. "Use the key read from the
 photo" is the way back, and that one does read the photo again, because the detected key is not kept
 once a choice has replaced it.
 
@@ -255,12 +241,11 @@ accidentals are drawn where they are printed, which is what the eye matches on.
 
 One limit worth knowing: re-spelling works from each notehead's stored position and its own written
 accidental, so an accidental that carried across the rest of its bar is not carried again, and a
-note that inherited a flat that way is spelled from the key instead. The Claude pass has the same
-gap. It bites only where a bar has one accidental and a later note on the same line leans on it,
+note that inherited a flat that way is spelled from the key instead. It bites only where a bar has one accidental and a later note on the same line leans on it,
 which is uncommon in the close voicings this is pointed at. Barlines are now stored on the staff,
 so the missing piece is only that `restate_staff` does not read them: closing it properly means
-changing what every key pick and every Claude pass produces, which is worth doing on its own rather
-than as a side effect. A note corrected by hand does carry, because that path resolves the measure.
+changing what every key pick produces, which is worth doing on its own rather than as a side
+effect. A note corrected by hand does carry, because that path resolves the measure.
 
 ### Fixing a note or a chord by hand
 
@@ -303,8 +288,8 @@ that read the selected chord back in prose, and a table of the whole reading und
 staves table went too, since the key it listed is what the picker at the top of the page shows.
 What went with all three, and is worth knowing: the interval list from the bass up, the roman
 numeral, the duration hints, the low-confidence warning in words, and each staff's clef and
-cut-off flag. The chord's common name and the Claude pass's per-event note are kept in the fix
-panel's own heading, since it is per-step and there was nowhere else for them. "Copy as text" moved
+cut-off flag. The chord's common name and a step's note, where a reading has one, are kept in
+the fix panel's own heading, since they are per-step and there was nowhere else for them. "Copy as text" moved
 into the fix section rather than going with the table it sat on. A clipped staff still says so, in
 the warnings at the top, which is where it always was.
 
@@ -321,7 +306,7 @@ A notehead that carries its own accidental is not overruled by the carry, and ne
 into the other.
 
 Deleting a chord renumbers the ones after it, because the schema requires an event's index to be
-its position and the Claude pass matches its answer up by that index. Stored corrections move along
+its position. Stored corrections move along
 with their chords, and a correction on the deleted chord goes with it. Taking the last notehead out
 of a hand takes the hand, and the last hand takes the chord: an event with no parts is not a chord
 the schema will hold, and a hand with no noteheads is not a hand playing a rest.
@@ -332,8 +317,8 @@ re-derives a pitch reads the geometry: `restate_staff` walks the noteheads that 
 each one out from its own y. So those three outlive a key pick with nothing replayed. A written
 accidental is the one correction that does not, because re-deriving reads that field and resolves
 it against the key instead. So the log holds accidentals, and re-applies them after anything that
-re-derives a pitch: picking a key re-spells every notehead, and the Claude pass re-reads every
-accidental off the image, so without the replay either one would quietly undo a person's answer.
+re-derives a pitch: picking a key re-spells every notehead, so without the replay it would
+quietly undo a person's answer.
 Replaying a structural change onto a structure that already contains it is a question this never
 has to answer.
 
@@ -383,10 +368,6 @@ smears. Where there is no Web Audio the button is hidden rather than left there 
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `SHEETER_DATA_DIR` | `<repo>/data`, and `/data` in the docker image | Where analyses are stored |
-| `SHEETER_VERIFY` | `manual` | `manual` puts the verify button on the analysis page, `auto` runs the pass on every upload, `off` hides it. Anything else behaves like `manual` |
-| `ANTHROPIC_API_KEY` | unset | Required for the Claude pass. Without it there is no button and no pass, whatever `SHEETER_VERIFY` says |
-| `SHEETER_VERIFY_MODEL` | `claude-sonnet-5` | Model for the vision pass |
-| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Point the Claude pass at a gateway or a proxy |
 | `PORT` | `5000` | Port to listen on, both for `tools/serve.sh` and in the docker image |
 
 ### Where things are stored
@@ -438,23 +419,15 @@ strict in both directions: a step the manifest says is right must read right, an
 rather than quietly relied on. Adding a page is a PNG, its ground truth, and a note saying which
 values a person checked and which were inferred.
 
-### Why there is no SDK
+### Why the image is Alpine, and what would break it
 
 The docker image is Alpine, and every requirement has a musllinux wheel on both amd64 and arm64,
-so nothing is compiled during the build. That is only true because the anthropic SDK is not one of
-them. It pulls in `jiter`, which publishes no musl wheel at all, and pip does not fail on that: it
-quietly resolves back to an SDK too old to send the strict tool schemas in `sheeter/verify.py`.
-Building `jiter` from source instead means a Rust toolchain in the image.
-
-Switching vendors does not help. The `openai` SDK requires `jiter` as well, and `litellm` depends
-on `openai` and adds `tiktoken`, `tokenizers` and `fastuuid` on top, all Rust extensions with the
-same problem. Both are strictly worse.
-
-So there is no SDK. `sheeter/claude.py` is a `urllib` POST to `/v1/messages` with the retries kept,
-exposing `client.messages.create(...)` so the calling code reads the same either way. It honours
-`ANTHROPIC_BASE_URL`, which is also how `tests/test_claude.py` points it at a loopback server. What
-is given up is streaming and typed response models, neither of which this app used: the reply was
-walked as plain JSON before and still is.
+so nothing is compiled during the build. Worth knowing before adding a dependency: the model SDKs
+do not qualify. The anthropic SDK pulls in `jiter`, which publishes no musl wheel at all, and pip
+does not fail on that, it quietly resolves back to an older release. The `openai` SDK requires
+`jiter` as well, and `litellm` adds `tiktoken`, `tokenizers` and `fastuuid` on top, all Rust
+extensions with the same problem. When the app did call a model it did so with `urllib`, and that
+code left with the pass; if a model comes back, that is still the way to call one from here.
 
 A wheel that installs is not a wheel that loads, and musl is where that bites: `libstdc++` is on the
 manylinux allowlist but not the musllinux one. Reading the `DT_NEEDED` entries of all 166 shared
