@@ -11,6 +11,8 @@
     "rather than ignored: tests/test_pages.py fails when one of them starts passing,",
     "which is the signal to move it out of known_wrong.",
     "",
+    "clefs, where given, is each system's clefs top to bottom, checked as one entry named clefs.",
+    "",
     "Pitch names are ASCII, as in the fixture manifest: F#4, Bb2."
   ],
   "pages": [
@@ -121,6 +123,18 @@
         {"right": ["A3", "Eb4"],        "left": null}
       ],
       "known_wrong": ["12.right", "13.right"]
+    },
+    {
+      "file": "justfriends.png",
+      "source": "https://storage.googleapis.com/aks_public/justfriends.png",
+      "note": "Four grand staffs in G, photocopied.  The page that took clef reading out.  The treble clef, the sharp and the 4/4 cut the first hundred pixels of every treble staff line into runs too short to count as line, so each treble staff measured as starting after them, the clef sat outside the glyph search, and the 4 of the time signature was read as a bass clef; the grand staff's two bass clefs were then settled by confidence, and which hand was swapped differed between builds.  The third system's two staves both measured short, so the window for the barline joining them missed it and they were read as two lone staves.  Now paired by a window anchored at the page's margin, lined up on the bass staff's edge, and named by position.  The third system's edges are both short, so its key signature is still not seen: that is the key entry in known_wrong.  Only the first step is annotated, read off the image rather than supplied by the owner: a G7 with the F natural written in.",
+      "key": 1,
+      "events": null,
+      "clefs": [["treble", "bass"], ["treble", "bass"], ["treble", "bass"], ["treble", "bass"]],
+      "steps": [
+        {"right": ["F4", "B4"], "left": ["G2"]}
+      ],
+      "known_wrong": ["key"]
     }
   ]
 }

@@ -53,6 +53,8 @@ def checks():
         out.append((page["file"], "key", "key" in wrong))
         if page.get("events") is not None:
             out.append((page["file"], "events", "events" in wrong))
+        if page.get("clefs") is not None:
+            out.append((page["file"], "clefs", "clefs" in wrong))
         for index, step in enumerate(page["steps"], start=1):
             for hand in ("right", "left"):
                 if step.get(hand) is not None:
@@ -74,6 +76,11 @@ def run_check(page, what):
     if what == "events":
         if len(events) != page["events"]:
             return "read %d events, page has %d" % (len(events), page["events"])
+        return None
+    if what == "clefs":
+        clefs = [[staff["clef"] for staff in system["staves"]] for system in doc["systems"]]
+        if clefs != page["clefs"]:
+            return "clefs read %s, page has %s" % (clefs, page["clefs"])
         return None
     index, hand = what.split(".")
     index = int(index)
@@ -105,7 +112,7 @@ def test_every_page_in_the_manifest_exists():
 
 def test_known_wrong_entries_refer_to_real_checks():
     for page in MANIFEST["pages"]:
-        valid = {"key", "events"} | {
+        valid = {"key", "events", "clefs"} | {
             "%d.%s" % (i, hand) for i in range(1, len(page["steps"]) + 1)
             for hand in ("right", "left")}
         for entry in page.get("known_wrong", []):

@@ -53,8 +53,10 @@ arbitrary mobile scaling.
           "index": 0,                 // index within this system, top to bottom
           "hand": "right",            // "right" | "left" | null (null = not a grand staff)
           "clef": "treble",           // validator accepts treble|bass|alto|tenor; the
-                                      // geometry only ever emits treble or bass
-          "clef_confidence": 0.92,
+                                      // geometry emits treble over bass on a grand staff
+                                      // and treble on a lone staff, by position
+          "clef_confidence": 1.0,     // a rule, not a measurement, so always 1.0 now;
+                                      // older readings carry the glyph test's figure
           "lines": [336.5, 395.1, 453.8, 512.4, 571.0],   // 5 y values, top to bottom
           "unit": 58.6,               // staff space in px = (lines[4]-lines[0]) / 4
           "x_range": [80, 1900],

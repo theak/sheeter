@@ -27,7 +27,7 @@ from .preprocess import estimate_scale, run_lengths
 #: and on re-upload, when its version is not this one.  Without that, an image analysed
 #: before a fix keeps showing the reading from before the fix, forever, because uploads
 #: are content addressed and the old reading is what the address points at.
-GEOMETRY_VERSION = "5"
+GEOMETRY_VERSION = "6"
 
 __all__ = ["analyze", "estimate_scale", "GEOMETRY_VERSION"]
 
@@ -118,7 +118,7 @@ def find_staves(mask, thickness, unit):
             # is only as long as the stretch of the line that happens to sit on that
             # row, and on a page with any drift left in it that is a fraction of the
             # staff.  A bass staff came out 232px short at the left, which put its clef
-            # outside detect_clef's search, and clef_end then starts the notehead search
+            # outside clef_end's search, and clef_end then starts the notehead search
             # after the first chord: the whole left hand of it was never looked for.
             lo, hi = _line_rows(lines_mask, ys[0])
             columns = np.flatnonzero(lines_mask[lo:hi].any(axis=0))
@@ -186,7 +186,8 @@ def group_systems(staves, mask, unit):
 
     gaps = [staves[i + 1]["lines"][0] - staves[i]["lines"][-1]
             for i in range(len(staves) - 1)]
-    joined = [_joined_at_left(mask, staves[i], staves[i + 1], unit)
+    page_left = min(staff["x_range"][0] for staff in staves)
+    joined = [_joined_at_left(mask, staves[i], staves[i + 1], unit, page_left)
               for i in range(len(staves) - 1)]
 
     if any(joined):
@@ -210,16 +211,26 @@ def group_systems(staves, mask, unit):
     return systems
 
 
-def _joined_at_left(mask, upper, lower, unit):
+def _joined_at_left(mask, upper, lower, unit, page_left=None):
     """Is there continuous vertical ink between two staves near their left edge?
 
     That is a brace or a barline drawn through both, and it is what makes two staves one
     grand staff.  The window reaches well left of where the staff lines were measured to
     start: the brace sits outside them, and on an indented first system the measured
     left edge can be a staff space or two right of where the joining stroke actually is.
+
+    It reaches from the leftmost staff on the whole page, not just this pair, because
+    the pair's own measured edges can both be wrong the same way.  A treble clef, a
+    sharp and a 4/4 break the first hundred pixels of every staff line into runs too
+    short to count as line, so on one page both staves of a grand staff measured as
+    starting 130px in, the window sat clear of the barline joining them, and they were
+    read as two lone staves.  Staves on a page share a left margin, so the page's
+    leftmost staff says where the joining stroke can be.
     """
     left = min(upper["x_range"][0], lower["x_range"][0])
-    x0 = max(0, int(left - unit * 3.0))
+    if page_left is None:
+        page_left = left
+    x0 = max(0, int(min(left, page_left) - unit * 3.0))
     x1 = int(min(mask.shape[1], left + unit * 1.5))
     y0 = int(round(upper["lines"][-1]))
     y1 = int(round(lower["lines"][0]))
@@ -380,29 +391,25 @@ def _thin_verticals(mask, unit):
     return tall & narrow
 
 
-def detect_clef(mask_ns, staff, band, unit):
-    """Identify the clef at the left edge of a staff.
+def clef_end(mask_ns, staff, band, unit):
+    """Where the clef at the left edge of a staff ends, so the reading can start after it.
 
-    Told apart by where the glyph sits against the staff, not by how tall it is.  A
-    treble clef wraps the second line from the bottom and its tail runs on past the
-    bottom line; a bass clef hangs from the second line from the top and stops well
-    short of the bottom.  Height was the old test and it is the wrong one: it calls
-    anything tall enough a treble clef, so an oversized bass clef, a first chord with a
-    long stem, or a clef with the opening barline welded to it all read as treble, and
-    a whole staff then comes out a twelfth from where it should be.
+    The clef itself is not read here; see _assign_clefs for why.  What is still needed
+    from the glyph is its right edge: the key signature is looked for from there, and
+    the noteheads after that.  Returning the staff's own left edge instead would put
+    the clef inside the notehead search and it gets read as a note or two.
 
-    Braces, barlines and stems are stripped first for that reason.  Left in, they join
-    the clef into one component that spans the band, and every test here reads that as
-    a treble clef whatever the clef actually is.
+    Braces, barlines and stems are stripped first.  Left in, they join the clef into one
+    component that spans the band and ends wherever they do.
     """
     x0, x1 = staff["x_range"]
     left = max(0, int(x0 - unit))
     right = min(x1, int(x0 + unit * 7))
     if right <= left:
-        return None, 0.0, x0
+        return x0
     search = mask_ns[band[0]:band[1], left:right]
     if not search.any():
-        return None, 0.0, x0
+        return x0
     solid = search & ~_thin_verticals(search, unit)
 
     best = None
@@ -414,37 +421,8 @@ def detect_clef(mask_ns, staff, band, unit):
         if best is None or comp["x0"] < best["x0"]:
             best = comp
     if best is None:
-        return None, 0.0, x0
-
-    top = band[0] + best["y0"]
-    bottom = band[0] + best["y1"]
-    below = (bottom - staff["lines"][-1]) / unit     # past the bottom line, in spaces
-    above = (staff["lines"][0] - top) / unit         # past the top line
-
-    # How far the glyph reaches above the top line is the one thing that separates the
-    # two cleanly.  Measured across all five music fonts Verovio ships: a bass clef
-    # comes in between -0.15 and +0.06 spaces above the line, a treble clef between
-    # +0.49 and +1.46.
-    #
-    # Height looks like it should work and does not.  It runs 1.8 to 3.7 spaces for a
-    # bass clef and 4.7 to 7.0 for a treble one, which separates on a clean render, but
-    # it is exactly what a photocopy ruins: thickened ink measured a bass clef at 5.5
-    # spaces, the old height test called it a treble clef, and a whole staff came out a
-    # twelfth from where it should be with nothing about the result looking wrong.  How
-    # far the glyph reaches above the line barely moves under the same thickening.
-    if above >= 0.30:
-        clef = "treble"
-        confidence = min(0.99, 0.72 + min(above - 0.30, 0.7) * 0.38)
-    elif above <= 0.20:
-        clef = "bass"
-        confidence = min(0.99, 0.72 + min(0.20 - above, 0.7) * 0.38)
-    else:
-        # Cannot say which clef it is, but it is still a glyph at the left edge, so the
-        # search for noteheads must start after it either way.  Returning the staff's
-        # own left edge here puts the clef back inside the search and it gets read as
-        # a note or two.
-        return None, 0.0, left + best["x1"]
-    return clef, round(float(confidence), 2), left + best["x1"]
+        return x0
+    return left + best["x1"]
 
 
 def _glyph_columns(patch, thickness):
@@ -1409,14 +1387,15 @@ def analyze(mask):
 
     cleaned = remove_staff_lines(mask, strong_lines, thickness, unit)
     grouping = group_systems(staves, mask, unit)
+    for staff_indices in grouping:
+        _line_up_left_edges([staves[i] for i in staff_indices])
 
     measured = []
     for index, staff in enumerate(staves):
         band = staff_band(staves, index, unit, height)
-        clef, clef_conf, clef_end = detect_clef(cleaned, staff, band, unit)
         measured.append({
-            "staff": staff, "band": band, "clef": clef, "clef_conf": clef_conf,
-            "clef_end": clef_end,
+            "staff": staff, "band": band,
+            "clef_end": clef_end(cleaned, staff, band, unit),
         })
 
     systems = []
@@ -1435,27 +1414,49 @@ def analyze(mask):
     return systems, warnings
 
 
-def _assign_clefs(members):
-    """Fill in any clef the glyph test could not call, and name the hands.
+def _line_up_left_edges(staves):
+    """The staves of one system start where the leftmost of them starts.
 
-    A two-staff system is a piano grand staff: the top staff is the right hand and the
-    bottom is the left.  That is the vocabulary the user asked for, so it is what the
-    document carries; a lone staff has no hand and falls back to its clef.
+    They are drawn from a shared margin, so a measured edge further right than a
+    sibling's is the measurement coming up short, not the staff.  It comes up short
+    where the front matter is dense: a treble clef, a sharp and a 4/4 cut the staff
+    lines into runs too short to count, and the span was measured as beginning after
+    them, about a hundred pixels in.  clef_end searches the first seven spaces after
+    this edge, so measured that way the clef was out of its window and the key
+    signature was never looked for: three of four systems on the page read as no key.
+    The bass staff beside it, whose clef leaves the top and bottom lines whole, had
+    the edge right, so it says where the treble staff starts too.
+    """
+    if len(staves) < 2:
+        return
+    left = min(staff["x_range"][0] for staff in staves)
+    for staff in staves:
+        staff["x_range"] = [left, staff["x_range"][1]]
+
+
+def _assign_clefs(members):
+    """Name the clefs from the staves' positions, and the hands with them.
+
+    A two-staff system is a piano grand staff: treble on top, bass below, right hand
+    and left.  A lone staff is a treble staff, which is what a lead sheet is.  The
+    clef is not read off the glyph, and it used to be.  The glyph test was right on
+    clean pages and wrong on the pages that matter: the search window was anchored on
+    a staff edge that measured a hundred pixels late, so it never held the clef, and
+    whatever tall mark it did hold, the 4 of a time signature or the first chord, was
+    measured as a clef and generally came out bass.  Two bass clefs on a grand staff
+    were then settled by which was the less confident misreading, and one page swapped
+    both hands on one build and neither on another.  A misread clef is the worst
+    failure the reader has, since every pitch on the staff is then a twelfth out and
+    nothing about the result looks wrong.  What is given up is the non-standard case,
+    a bass clef on a lone staff or a treble-treble pair, which the app was never for.
+
+    The confidence is 1.0 because it is a rule and not a measurement; the field is
+    kept because stored readings and the schema have it.
     """
     for position, member in enumerate(members):
-        if member["clef"] is None:
-            member["clef"] = "treble" if position == 0 else "bass"
-            member["clef_conf"] = 0.4
+        member["clef"] = "bass" if len(members) == 2 and position == 1 else "treble"
+        member["clef_conf"] = 1.0
     if len(members) == 2:
-        # Two staves braced together are a piano part, so the same clef on both is far
-        # more often one of them misread than a real pair of matching clefs.  Only
-        # overturn a reading the glyph test was not sure of.
-        upper, lower = members
-        if upper["clef"] == lower["clef"]:
-            weaker = lower if lower["clef_conf"] <= upper["clef_conf"] else upper
-            if weaker["clef_conf"] < 0.9:
-                weaker["clef"] = "bass" if weaker is lower else "treble"
-                weaker["clef_conf"] = 0.45
         members[0]["hand"], members[1]["hand"] = "right", "left"
     else:
         for member in members:

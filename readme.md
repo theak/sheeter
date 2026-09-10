@@ -51,8 +51,9 @@ than classifying connected components is what makes dense music work, since a st
 one blob but three separate peaks, and a hollow notehead nicked by staff-line removal is still
 one peak.
 5. **Pitch.** A notehead's vertical position against the five lines is a diatonic step, which
-becomes a pitch once you know the clef (read from the height of the glyph at the left edge) and
-the key signature (the run of accidentals right after it). The signature is fitted rather than
+becomes a pitch once you know the clef (the top staff of a grand staff is treble and the bottom
+is bass, a lone staff is treble; the glyph is only measured for where it ends) and the key
+signature (the run of accidentals right after it). The signature is fitted rather than
 spelled out: it is a rigid template, so what matters is how well the run sits on the positions it
 must occupy, not what letter each glyph is nearest. Asking for the letter is the fragile way
 round, since on a photocopy a flat's bowl measured over half a step high and the lone flat of a
@@ -78,10 +79,12 @@ while it existed still open; their pitches are the reading and stay.
 
 ### How accurate it is
 
-The corpus is 15 cases, 273 noteheads, built by `tools/make_fixtures.py`: a music21 score with
+The corpus is 14 cases, 269 noteheads, built by `tools/make_fixtures.py`: a music21 score with
 known pitches, engraved through Verovio, plus a synthesized phone-camera version of the same
-page. The pipeline reads 273/273 on the clean renders and 273/273 on the photos, with no spurious
+page. The pipeline reads 269/269 on the clean renders and 269/269 on the photos, with no spurious
 noteheads and the right number of events in both.
+A lone bass staff was a fifteenth case and is not any more: the clef is no longer read from the
+page, so a bass part on its own staff is out of scope rather than something the corpus claims.
 
 Three more suites sit alongside it, each written because the corpus could not say anything about
 what it covers:
@@ -154,13 +157,22 @@ fused with the notehead it belongs to, or with a stem, is one shape with a noteh
 not read. Worse, a missed accidental is not just a missing sharp: noteheads are detected everywhere
 except where an accidental was found, so an undetected one gets read as a notehead or two of its
 own, and a three-note chord comes back with five notes in it.
-- **A clef change mid-staff.** The clef is read once, from the left edge of each staff, and holds
-for the whole line.
+- **A clef that is not the standard one.** The clef is not read from the page at all: a grand
+staff is treble over bass and a lone staff is treble, for the whole line. A bass part on its own
+staff, a treble-treble pair or a clef change mid-staff is read a twelfth out. This used to be
+detected from the glyph, and the detector was right on clean pages and wrong on a photocopied one
+where the glyph fell outside its search window and the 4 of a 4/4 was read as a bass clef, which
+swapped both hands of a grand staff. A misread clef is the worst failure the reader has, since
+nothing about the result looks wrong, so the rule replaced the measurement.
 - **Music cropped at the frame edge.** It notices (`cut_off`, and a warning on the page) but it
 cannot recover what is not in the photo.
 
-It also expects one staff or one grand staff per system, treble and bass clefs, and a page
-photographed within about 6 degrees of level. A system of three or more staves, an organ score
+It also expects one staff or one grand staff per system, and a page photographed within about 6
+degrees of level. The two staves of a grand staff are found by the barline or brace joining them
+at the left, looked for from the page's left margin rather than from where the staff lines were
+measured to start, because dense front matter can make both staves of a pair measure as starting
+a hundred pixels in; for the same reason the staves of a system all take the leftmost edge among
+them, which is where the search for the clef's end and the key signature begins. A system of three or more staves, an organ score
 or a song with a piano part, is still read but gets no left and right hand labels. Treat the
 whole thing as a reading aid and check it against the page.
 
