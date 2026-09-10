@@ -667,6 +667,17 @@ button.fix-hear:hover:not([disabled]) {
    is the Sound button up in the stage controls.  overlay.js sets both. */
 button.fix-hear[disabled] { opacity: 0.45; }
 
+/* While a correction is in flight.  Pico turns aria-busy into a spinner in front of the
+   label, and these buttons are square with a single glyph in them, so a spinner beside
+   it breaks the row; the same dimming a muted play button gets says "not now" without
+   changing the size of anything.  Pico's own pointer-events: none on a busy button is
+   left alone: it backs the one-at-a-time rule in overlay.js with something a stray
+   click cannot get past. */
+.fix-note [aria-busy="true"]::before,
+.fix-add [aria-busy="true"]::before { display: none; }
+.fix-note [aria-busy="true"],
+.fix-add [aria-busy="true"] { opacity: 0.45; }
+
 /* The bin is the one button here that takes something away, so it is not drawn like the
    three that spell a note: a faint fill that reads as a different kind of control before
    the icon is even looked at, and the sectioning colour rather than a grey of my own so

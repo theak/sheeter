@@ -87,8 +87,29 @@ def saved():
     return store.save(make_doc(raw, "IMG_4021.jpg"), raw, "jpg", png_bytes())
 
 
-def call(app, method, path, form=None):
-    """Drive the WSGI app directly.  Returns ``(status, headers, body)``."""
+@pytest.fixture
+def saved_pair():
+    """Two chords in one measure, so a written accidental has something to carry to."""
+    raw = b"two chords worth of music"
+    doc = make_doc(raw, "Bars 5 to 6")
+    system = doc["systems"][0]
+    second = json.loads(json.dumps(system["events"][0]))
+    second["index"] = 1
+    second["x"] = 200.0
+    second["x_range"] = [180, 220]
+    for note in second["parts"][0]["notes"]:
+        note["x"] = 200.0
+    system["events"].append(second)
+    return store.save(schema.validate_analysis(doc), raw, "jpg", png_bytes())
+
+
+def call(app, method, path, form=None, accept=None):
+    """Drive the WSGI app directly.  Returns ``(status, headers, body)``.
+
+    *accept* is what the caller says it will take.  Left out, this is a form post from a
+    browser, which is the path a page with no scripting takes; the overlay asks for
+    ``application/json`` and gets the panels an edit moved instead of a redirect.
+    """
     body = urllib.parse.urlencode(form or {}).encode()
     environ = {
         "REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": "",
@@ -98,6 +119,8 @@ def call(app, method, path, form=None):
         "CONTENT_LENGTH": str(len(body)),
         "CONTENT_TYPE": "application/x-www-form-urlencoded",
     }
+    if accept is not None:
+        environ["HTTP_ACCEPT"] = accept
     captured = {}
 
     def start_response(status, headers, exc_info=None):
@@ -749,11 +772,22 @@ class TestManualEditing:
         assert 'class="fix-panel"' not in text
 
     def test_the_page_says_what_re_analyzing_would_cost(self, app, saved):
-        """Losing a hand correction to a button press is worth a word of warning."""
-        assert "clears them" not in call(app, "GET", "/a/%s" % saved)[2].decode()
+        """Losing a hand correction to a button press is worth a word of warning.
+
+        The sentence is in the page either way and hidden while there is nothing to
+        warn about, rather than being rendered only once there is.  A correction lands
+        without a page load, so the count in it is one the overlay has to be able to
+        update, and it can only update something that is there.
+        """
+        text = call(app, "GET", "/a/%s" % saved)[2].decode()
+        assert 'id="edits-note" hidden' in text, "no corrections, so nothing to say yet"
+        assert ">0</span> note(s) corrected" in text
+
         call(app, "POST", "/a/%s/note" % saved, self.form(value="sharp"))
         text = call(app, "GET", "/a/%s" % saved)[2].decode()
         assert "clears them" in text, "the re-analyze button warns first"
+        assert 'id="edits-note" hidden' not in text
+        assert ">1</span> note(s) corrected" in text
 
     def test_move_is_rendered_and_left_for_the_overlay_to_hide(self, app, saved):
         """It applies a pitch picked from the menu, so it has nothing to do until the
@@ -853,3 +887,236 @@ class TestManualEditing:
         # of the row itself.
         assert "fix-buttons" not in row
         assert row.index("fix-pitch") < row.index('class="fix-acc"')
+
+
+JSON = "application/json"
+#: What a browser sends when a form is posted, which must never look like the overlay.
+BROWSER = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+
+class TestInstantEditing:
+    """A correction the overlay applies in place, instead of reloading the page.
+
+    The page is 86% fix panels on a dense reading, and an accidental moves one or two of
+    them, so the answer to a correction is those panels rather than the whole page.  It
+    is the same route either way and the same edit: only what comes back differs, which
+    is what keeps the no-scripting path exactly as it was.
+    """
+
+    @staticmethod
+    def form(**over):
+        form = {"system": "0", "event": "0", "staff": "0", "note": "1",
+                "step_number": "1"}
+        form.update(over)
+        return form
+
+    def answer(self, app, saved, path="/note", **over):
+        status, headers, body = call(app, "POST", "/a/%s%s" % (saved, path),
+                                     self.form(**over), accept=JSON)
+        assert status.startswith("200"), status
+        assert "application/json" in headers.get("Content-Type", "")
+        return json.loads(body)
+
+    # ---------------------------------------------------------------- both ways out
+
+    def test_a_form_post_still_redirects_to_its_step(self, app, saved):
+        """The whole feature with no scripting, and it must not have moved an inch."""
+        status, headers, _ = call(app, "POST", "/a/%s/note" % saved,
+                                  self.form(value="sharp"), accept=BROWSER)
+        assert status.startswith("303")
+        assert headers["Location"].endswith("/a/%s#step-1" % saved)
+        assert store.load(saved)["systems"][0]["events"][0]["parts"][0]["notes"][1][
+            "name"] == "E#4"
+
+    def test_no_accept_header_at_all_still_redirects(self, app, saved):
+        status, _headers, _ = call(app, "POST", "/a/%s/note" % saved,
+                                   self.form(value="sharp"))
+        assert status.startswith("303")
+
+    def test_asking_for_json_gets_the_reading_and_the_panels(self, app, saved):
+        answer = self.answer(app, saved, value="sharp")
+        assert sorted(answer) == ["document", "panels"]
+        assert list(answer["panels"]) == ["1"]
+        assert answer["document"]["systems"][0]["events"][0]["parts"][0]["notes"][1][
+            "name"] == "E#4"
+        assert len(answer["document"]["edits"]) == 1
+
+    def test_the_reading_it_answers_with_is_the_one_on_disk(self, app, saved):
+        """Not the copy in hand: a rename could have landed while the edit ran, and what
+        the overlay holds afterwards should be what the store has."""
+        answer = self.answer(app, saved, value="sharp")
+        assert answer["document"] == store.load(saved)
+
+    # ---------------------------------------------------------------- which panels
+
+    def test_a_panel_it_sends_is_the_markup_the_page_would_have(self, app, saved_pair):
+        """One renderer, so a panel swapped into the page in the browser is the panel
+        that page would have been served.  Asserted rather than assumed, because two
+        renderers agreeing today is how they come to disagree later.
+
+        On a reading with two steps rather than one, so that the "of N" in the heading
+        is a number this can be wrong about.
+        """
+        answer = self.answer(app, saved_pair, value="flat")
+        page = call(app, "GET", "/a/%s" % saved_pair)[2].decode()
+        assert len(answer["panels"]) == 2
+        for number, markup in answer["panels"].items():
+            assert markup in page, "panel %s is not what the page renders" % number
+            assert 'class="fix-of">2<' in markup
+
+    def test_an_accidental_sends_the_panels_it_carries_to(self, app, saved_pair):
+        """It holds to the end of its measure, so the later chord at that staff position
+        is re-spelled too and its panel is as wrong as the edited one until it is
+        redrawn.  This is why the answer is a set of panels, not the one clicked in."""
+        answer = self.answer(app, saved_pair, value="sharp")
+        assert sorted(answer["panels"], key=int) == ["1", "2"]
+
+    def test_asking_for_the_accidental_a_note_has_sends_no_panels(self, app, saved):
+        """Clicking the one already in force is a reader agreeing with the page."""
+        answer = self.answer(app, saved, value="natural")
+        assert answer["panels"] == {}
+        assert answer["document"]["edits"] == []
+
+    def test_moving_a_notehead_sends_its_panel(self, app, saved):
+        answer = self.answer(app, saved, path="/note/pitch",
+                             step=str(step_of("A4")))
+        assert list(answer["panels"]) == ["1"]
+        assert "A 4" in answer["panels"]["1"]
+
+    def test_adding_a_notehead_sends_its_panel(self, app, saved):
+        answer = self.answer(app, saved, path="/note/add", step=str(step_of("B4")))
+        assert list(answer["panels"]) == ["1"]
+        assert "B 4" in answer["panels"]["1"]
+
+    def test_undoing_a_correction_sends_its_panel(self, app, saved):
+        """The one control that changes the shape of its row: the undo button is there
+        because the note is corrected, so undoing takes the button away with it."""
+        assert "fix-clear" in self.answer(app, saved, value="sharp")["panels"]["1"]
+        answer = self.answer(app, saved, value="clear")
+        assert list(answer["panels"]) == ["1"]
+        assert "fix-clear" not in answer["panels"]["1"]
+        assert answer["document"]["edits"] == []
+        assert answer["document"]["systems"][0]["events"][0]["parts"][0]["notes"][1][
+            "name"] == "E4"
+
+    # ---------------------------------------------------------------- reload instead
+
+    def test_deleting_a_chord_names_the_step_that_went(self, app, saved_pair):
+        """A chord going renumbers every step after it, and with it the heading and the
+        indices in every one of their forms.  None of that is sent: the overlay stamps
+        it onto the panels it has, from the reading, which is the only thing that knows
+        what each step is now.  So the answer is the reading and which step went.
+        """
+        status, _headers, body = call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                      {"system": "0", "event": "0",
+                                       "step_number": "1"}, accept=JSON)
+        assert status.startswith("200")
+        answer = json.loads(body)
+        assert answer["deleted"] == 1
+        assert answer["panels"] == {}, "the survivors differ only in what is stamped"
+        assert len(answer["document"]["systems"][0]["events"]) == 1
+        assert len(store.load(saved_pair)["systems"][0]["events"]) == 1
+
+    def test_the_reading_says_what_the_renumbered_steps_are(self, app, saved_pair):
+        """Which is what the overlay stamps from, so it has to be in the answer rather
+        than left for the browser to work out by subtracting one."""
+        answer = json.loads(call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                 {"system": "0", "event": "0", "step_number": "1"},
+                                 accept=JSON)[2])
+        events = answer["document"]["systems"][0]["events"]
+        assert [event["index"] for event in events] == [0], \
+            "the surviving chord is event 0 now, not event 1"
+
+    def test_deleting_the_second_chord_leaves_the_first_alone(self, app, saved_pair):
+        """Nothing before the cut is renumbered, so nothing about it moves."""
+        answer = json.loads(call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                 {"system": "0", "event": "1", "step_number": "2"},
+                                 accept=JSON)[2])
+        assert answer["deleted"] == 2
+        assert answer["panels"] == {}
+
+    def test_emptying_a_chord_by_removing_notes_names_it_too(self, app, saved):
+        """Taking the last notehead off the last staff takes the chord with it, so a
+        note delete can be a chord delete and is answered as one."""
+        for _ in range(2):
+            answer = self.answer(app, saved, path="/note/delete", note="0")
+            assert "deleted" not in answer
+        answer = self.answer(app, saved, path="/note/delete", note="0")
+        assert answer["deleted"] == 1
+        assert answer["document"]["systems"][0]["events"] == []
+
+    def test_a_chord_delete_naming_a_chord_that_is_not_there_moves_nothing(
+            self, app, saved_pair):
+        """A stale form, which is not a fault: nothing was deleted, so nothing moved and
+        no step is named as gone.  The overlay leaves the page as it is."""
+        status, _headers, body = call(app, "POST", "/a/%s/chord/delete" % saved_pair,
+                                      {"system": "0", "event": "9",
+                                       "step_number": "1"}, accept=JSON)
+        assert status.startswith("200")
+        answer = json.loads(body)
+        assert answer["panels"] == {}
+        assert "deleted" not in answer
+        assert len(store.load(saved_pair)["systems"][0]["events"]) == 2
+
+    def test_a_form_naming_nothing_real_asks_for_a_reload(self, app, saved):
+        status, _headers, body = call(app, "POST", "/a/%s/note" % saved,
+                                      self.form(system="not-a-number"), accept=JSON)
+        assert status.startswith("200")
+        assert json.loads(body) == {"reload": True}
+
+    def test_a_reading_that_is_gone_is_still_a_404(self, app):
+        status, _headers, _ = call(app, "POST", "/a/aaaaaaaaaaaa/note",
+                                   self.form(value="sharp"), accept=JSON)
+        assert status.startswith("404")
+
+    # ---------------------------------------------------------------- the overlay end
+
+    def served(self, app, path):
+        status, _headers, body = call(app, "GET", path)
+        assert status.startswith("200")
+        return body.decode("utf-8")
+
+    def test_the_overlay_asks_for_json_and_falls_back_to_a_reload(self, app):
+        overlay = self.served(app, "/static/js/overlay.js")
+        assert "Accept: 'application/json'" in overlay.replace('"', "'")
+        assert "location.reload()" in overlay
+        # Never re-posting the form: a replayed post after a chord went lands on a
+        # different chord, because deleting one renumbers the events.
+        assert "requestSubmit" not in overlay
+
+    def test_the_overlay_reads_the_pressed_button_safely(self, app):
+        """The formaction property is the address of the page when the attribute is
+        absent, not the form's action, and the accidental buttons are the ones without
+        it.  Read unguarded it posts an accidental at /a/<id> instead of /a/<id>/note.
+        """
+        overlay = self.served(app, "/static/js/overlay.js")
+        assert "hasAttribute('formaction')" in overlay
+
+    def test_the_overlay_sends_one_correction_at_a_time(self, app):
+        """The page reload used to serialize these for free.  Writing an edit back is
+        read, splice, write, so two in flight together have the second drop the first.
+        """
+        overlay = self.served(app, "/static/js/overlay.js")
+        assert "var busy = false;" in overlay
+        assert "aria-busy" in overlay
+        css = self.served(app, "/static/css/sheeter.css")
+        assert '.fix-note [aria-busy="true"]' in css
+
+    def test_the_overlay_puts_focus_back_after_swapping_a_panel(self, app):
+        """innerHTML destroys the button that was pressed, so somebody working by
+        keyboard would land on the body and have to tab in from the top of the page
+        between pressing sharp and pressing flat on the same note."""
+        overlay = self.served(app, "/static/js/overlay.js")
+        assert "function refocus(" in overlay
+        assert ".focus()" in overlay
+
+    def test_the_correction_count_is_in_the_page_for_the_overlay_to_update(self, app,
+                                                                          saved):
+        page = self.served(app, "/a/%s" % saved)
+        assert 'id="edits-count"' in page
+        assert 'id="reanalyze-form"' in page
+        # The confirm moved into overlay.js, because the count written into it went
+        # stale the moment a correction stopped reloading the page.
+        assert "onsubmit" not in page.split('id="reanalyze-form"')[1][:400]
+        assert "correction(s) you made by hand will be cleared" in self.served(
+            app, "/static/js/overlay.js")

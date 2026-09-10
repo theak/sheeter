@@ -366,6 +366,92 @@ comment in the markup is emitted, and three of them once per notehead came to 98
 fifty-chord page weighed, 2KB of the 28KB it gzipped to. They are the only comments here that are
 not written in HTML, and that is what the `%` is saying.
 
+### A correction without a page load
+
+Those panels are also why a correction used to be so expensive. On a fifty-three step page the
+whole page is 672KB and the panels are 581KB of it, 86%. Sharpening one note posted a form, and the
+answer was that entire page again: the reader lost their zoom, their pan and their place, to alter
+one panel out of fifty-three.
+
+So the same post goes by `fetch` when there is scripting, and the answer is only the panels the
+change moved. Same route, same edit, same code path; the routes look at the `Accept` header and
+either redirect as they always did or answer with the panels. A browser form post sends
+`text/html,...,*/*;q=0.8`, which does not contain `application/json`, so with no scripting nothing
+about this is different, and that is the assertion the tests make first.
+
+Which panels moved is worked out by comparing the rows a panel is drawn from, in `sheeter/panels.py`,
+before and after the change. That comparison is the point rather than an optimisation, because the
+answer is not always the panel the reader clicked in. A written accidental holds to the end of its
+measure at that staff position, so flattening a note re-spells the later notes there too, and their
+panels are as wrong as the edited one until they are redrawn. Measured on the same page: an
+accidental moves one panel, or two when it carries; moving, adding and removing a notehead move
+one; picking a key moves forty-two of the fifty-three, which is why the key picker still reloads
+and why the panels are worth counting rather than guessing at. A note edit now puts about 82KB on
+the wire where it put 672KB, and renders one panel in 0.2ms where it rendered the page in 16ms.
+
+The server renders those panels, from `templates/fix_panel.html`, which the page includes once per
+step and the routes render on their own for a single panel. Bottle's `% include` emits exactly what
+inlining the markup emitted, byte for byte, so there is one renderer and no chance of a panel
+swapped into the page differing from the panel that page would have been served. Building them in
+javascript instead would be every button, title and label written twice in two languages, and one
+of the two would drift.
+
+Deleting a chord lands in place too, and it takes one more idea, because it renumbers. Every step
+after the cut moves down one, and with it that panel's heading, the step each of its forms names and
+the event index each of them posts at, since an event's index is its position and the reading
+renumbers them when one goes. Sending all those panels back costs more than the page does. Doing the
+subtraction in the browser is worse than it sounds: get it wrong and a form quietly posts at the
+chord next door, which corrupts a reading rather than looking broken.
+
+So neither happens. The reading that comes back already says what every step now is, and the panels
+sit in the same order as the steps in it, so the browser walks the two together and copies: panel
+one is step one, and it takes its number, its heading and its indices from there. No arithmetic to
+get wrong, and the same reading the labels are rebuilt from. What is sent is the reading and which
+step went, and usually not one panel: deleting each of the 53 chords of `justfriends.png` in turn,
+no surviving panel's content ever changed, only the indices. Only ever changed is not the same as
+cannot change, though. Deleting a chord re-names all of them, and a chord's name can depend on what
+that hand played before it, so the comparison still runs, ignoring the indices the browser stamps,
+and any panel that really did go stale comes back rendered.
+
+That is what the two numbers in "Step 3 of 53" are wrapped in spans for, and the spans in one
+wrapper because the heading is a flex row with a gap, so four loose text runs in it would come apart
+into "Step  3  of  53". It costs 5.9KB on the 53-step page, and it keeps the sentence written in one
+place rather than once in the template and once in javascript.
+
+Two things still come back as a plain reload. A reading that left the store while the edit ran. And
+any trouble at all: a status, a body that will not parse, a dropped connection. Never a re-post of
+the form, which looks like the safe fallback and is not: after a chord has gone the events are
+renumbered, so a replayed post lands on a different one. Worst case the reader presses the button
+again. A delete that empties the page is a reload as well, since a reading with no noteheads has its
+own thing to say and the server says it properly.
+
+One correction at a time, too. The page reload used to serialize them for free, since there was no
+clicking again before it came back, and writing an edit back is read, splice, write: two in flight
+together and the second drops the first. Extra clicks are dropped rather than queued, because an
+edit is arithmetic on a stored reading and answers in milliseconds.
+
+Editing in place is also what makes the note audible. Sharpening, flattening, naturalising or
+moving a note plays that note, on its own, as soon as the edit lands, so you can hear whether you
+got it right rather than reading it back. Which note that is comes out of a comparison rather than
+being tracked: the play buttons in the edited hand carry the pitches, and the one pitch that is
+newly there is the note the edit made. That holds for all four corrections without special cases.
+Sharpening retires one pitch and brings in another, adding brings one in and retires none, removing
+brings in none and so plays nothing, and two notes landing on the same pitch brings in none either,
+where silence beats a guess. Settling a chord re-sorts it, so comparing pitches is right where
+comparing rows would not be.
+
+**No framework, and htmx was measured rather than waved off.** The panels are a pure function of
+rows the server builds, and the server owns the model: it derives a pitch from where the notehead
+sits, carries an accidental to the barline, re-spells the staff and re-names the chords. The
+browser holds a cache of that, not a source of truth, and a framework earns its place when the
+browser owns the model. Alpine would need the note-row markup moved into the client, which is the
+duplication above or the loss of the no-scripting path. htmx does fit the shape. A button's
+`hx-post` inside a form sends that form, `hx-swap-oob="innerHTML"` swaps a panel and leaves its
+wrapper alone, and `HX-Refresh` covers the reload. It still lost: 51KB of dependency and
+around 11KB of `hx-post` attributes duplicating the `action`s already in the markup, to save about
+thirty lines, because rebuilding the labels over the photo, rewiring a redrawn panel and picking
+the note to play are the bulk of the work and htmx does none of it.
+
 ### Hearing the chords
 
 Selecting a step plays it, which for someone who knows what a chord sounds like but not what it

@@ -8,7 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, redirect, request, response, static_file, template
 
-from sheeter import geometry, keysig, pipeline, pitches, store
+from sheeter import geometry, keysig, panels, pipeline, store
 
 app = Bottle()
 
@@ -164,9 +164,9 @@ def show(analysis_id):
                     engine_version=geometry.GEOMETRY_VERSION,
                     keysig=keysig, key_fifths=keysig.current(document),
                     key_picked=document["key_override"] is not None,
-                    # The fix panels need the pitch menu and a notehead's staff
-                    # position, both of which are arithmetic the modules already do.
-                    pipeline=pipeline, pitches=pitches)
+                    # The fix panels are drawn from rows this builds; the same rows an
+                    # edit compares to decide which panels it has to send back.
+                    panels=panels)
 
 
 @app.route("/a/<analysis_id>/analysis.json")
@@ -343,6 +343,15 @@ def _step_form():
         return None
 
 
+def _wants_json():
+    """Is the overlay asking, rather than a form post from the browser?
+
+    A browser form post sends "text/html,...,*/*;q=0.8", which does not contain this, so
+    with no scripting every correction takes the redirect below exactly as it always did.
+    """
+    return "application/json" in (request.headers.get("Accept") or "")
+
+
 def _edit(analysis_id, change, fields):
     """The shape every hand correction shares: locate, change, write back, come back.
 
@@ -350,19 +359,88 @@ def _edit(analysis_id, change, fields):
     anything moved.  A form naming something that is not there redirects unchanged
     rather than erroring: it is a stale page, not a fault, and the reading it lands on
     will show why.
+
+    "Come back" is whichever way the caller asked.  A form post gets the redirect to the
+    step it was made on, which is the whole feature with no scripting.  The overlay asks
+    for JSON and gets the panels this change moved, so it can swap them into the page it
+    already has rather than fetching a page that is 86% panels to alter one of them.
     """
     document = _load(analysis_id)
     if document is None:
         return _render_index("That analysis is no longer here.", 404)
+    wants_json = _wants_json()
     target = _edit_target(fields)
-    if target is None:
+    # The rows as they stand, so the answer can say which panels the change moved.  Not
+    # built for a form post, which is sending the whole page back either way.
+    before = (panels.fix_steps(document)
+              if wants_json and target is not None else None)
+    latest = document
+    if target is not None:
+        try:
+            if change(document, target):
+                latest = _save_edited(analysis_id, document)
+        except ValueError:
+            pass
+    if not wants_json:
         return redirect(_back_to(analysis_id))
-    try:
-        if change(document, target):
-            _save_edited(analysis_id, document)
-    except ValueError:
-        pass
-    return redirect(_back_to(analysis_id))
+    if target is None or latest is None:
+        # A form naming indices that are not there, or a reading that left the store
+        # while this ran.  Either way the page in front of the reader is not this one.
+        return {"reload": True}
+    return _panels_for(analysis_id, before, latest, target)
+
+
+def _panels_for(analysis_id, before, document, target):
+    """The panels a correction moved, rendered, for the overlay to swap in place.
+
+    Only the ones that moved, which is the point: on a dense page the panels are 86% of
+    the document and an accidental moves one or two.  Two when the note it was written on
+    is not the last in its measure at that staff position, because the accidental now
+    carries to the ones after it, and those panels are as wrong as the edited one until
+    they are redrawn.
+
+    Asking for the accidental a note already sounds moves nothing, and then this sends no
+    panels at all rather than pretending something happened.
+
+    A chord that went is named as well, in "deleted".  What it renumbers is not sent: the
+    overlay stamps the new step numbers and event indices onto the panels it already has,
+    from the reading below, which is the only thing that knows them.
+    """
+    after = panels.fix_steps(document)
+    gone = None
+    if len(after) == len(before) - 1:
+        gone = _step_that_went(before, target)
+        if gone is None:
+            return {"reload": True}
+        moved = panels.changed_after_delete(before, after, gone)
+    elif len(after) == len(before):
+        moved = panels.changed_panels(before, after)
+    else:
+        # Nothing here removes two chords at once.  If something ever does, the page it
+        # comes back with is right and a guess at how to patch this one would not be.
+        return {"reload": True}
+
+    answer = {
+        "document": document,
+        "panels": dict(
+            (str(number), template("fix_panel.html", fix=after[number - 1],
+                                   analysis_id=analysis_id, total=len(after)))
+            for number in moved),
+    }
+    if gone is not None:
+        answer["deleted"] = gone
+    return answer
+
+
+def _step_that_went(before, target):
+    """Which step a chord delete removed, as it was numbered before it went.
+
+    The event a correction named, since deleting a chord names it directly and removing
+    the last notehead of the last hand takes that same chord with it.
+    """
+    system_index, event_index = target[0], target[1]
+    return next((row["number"] for row in before
+                 if row["system"] == system_index and row["event"] == event_index), None)
 
 
 def _edit_target(fields):
@@ -392,14 +470,19 @@ def _save_edited(analysis_id, document):
 
     Waitress serves other requests while this one runs, so the document was read
     before the edit and only the reading and its edit log are this request's to write.
+
+    Returns what was written, which is this reading plus anything the store has gained
+    since it was read, or None if it is no longer there to write to.  The overlay is
+    handed that rather than the copy in hand, so what it holds is what is on disk.
     """
     try:
         latest = store.load(analysis_id)
     except (KeyError, ValueError):
-        return
+        return None
     for field in ("systems", "edits", "warnings"):
         latest[field] = document[field]
     store.save_doc(latest)
+    return latest
 
 
 @app.route("/a/<analysis_id>/delete", method="POST")
