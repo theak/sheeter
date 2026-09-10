@@ -219,7 +219,7 @@
     marks.push(mark);
   });
 
-  var NAME_STEP_PX = 2;
+  var NAME_STEP_PX = 4;
 
   function makePill(className, tagText, lines, step, anchor) {
     var pill = el('button', 'pill ' + className);

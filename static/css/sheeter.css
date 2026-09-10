@@ -291,7 +291,7 @@
   padding-right: 0.25em;
 }
 .pill .names { display: flex; flex-direction: column; align-items: flex-start; }
-/* Stacked note names step right as they go up, two pixels a note from the bottom one, so
+/* Stacked note names step right as they go up, four pixels a note from the bottom one, so
    the eye reads them left to right as well as top to bottom.  makePill sets the margin. */
 .pill.hand-r { background: var(--sheeter-right); }
 .pill.hand-l { background: var(--sheeter-left); }
