@@ -9,7 +9,10 @@ import math
 
 import numpy as np
 from PIL import Image, ImageOps
-from scipy import ndimage
+
+from . import lazy_import
+
+ndimage = lazy_import("scipy.ndimage")
 
 try:
     # iPhones shoot HEIC by default.  Safari converts on upload, but a file picked out

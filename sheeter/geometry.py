@@ -16,11 +16,12 @@ connected components.  Components fuse (a stack of thirds becomes one blob) and 
 """
 
 import numpy as np
-from scipy import ndimage
-from scipy.signal import fftconvolve
 
-from . import pitches
+from . import lazy_import, pitches
 from .preprocess import estimate_scale, run_lengths
+
+fft = lazy_import("scipy.fft")
+ndimage = lazy_import("scipy.ndimage")
 
 #: Bumped whenever a change can alter what the reader says about a page.  Stored
 #: analyses carry the version that produced them; the app reads one again on request,
@@ -326,8 +327,21 @@ def _correlate(binary, kernel):
     total = float(kernel.sum())
     if total <= 0:
         return np.zeros(binary.shape, dtype=np.float32)
-    return fftconvolve(binary.astype(np.float32), kernel[::-1, ::-1],
-                       mode="same") / total
+    return _convolve_same(binary.astype(np.float32), kernel[::-1, ::-1]) / total
+
+
+def _convolve_same(image, kernel):
+    """``scipy.signal.fftconvolve(image, kernel, mode="same")``, without scipy.signal.
+
+    scipy.signal costs ~40MB of memory to import for this one call; scipy.fft is the
+    same transform it uses underneath and costs ~1MB on top of ndimage.
+    """
+    full = [a + b - 1 for a, b in zip(image.shape, kernel.shape)]
+    size = [fft.next_fast_len(n, real=True) for n in full]
+    product = fft.rfft2(image, size) * fft.rfft2(kernel, size)
+    result = fft.irfft2(product, size)
+    top, left = [(f - a) // 2 for f, a in zip(full, image.shape)]
+    return result[top:top + image.shape[0], left:left + image.shape[1]]
 
 
 def _extent(binary, y, x, axis, limit):
