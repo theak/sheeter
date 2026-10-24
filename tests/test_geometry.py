@@ -826,3 +826,37 @@ class TestLedgerStubIsALine:
     def test_with_the_ledger_line_drawn_it_is_a_note(self):
         mask, staff = self._staff_with_wide_hollow_note_above(with_ledger=True)
         assert [note["k"] for note in self._read(mask, staff)] == [11]
+
+
+class TestConvolution:
+    """The notehead filter used to call scipy.signal.fftconvolve, which costs ~40MB to
+    import.  Its stand-in has to give the same numbers, or every threshold tuned
+    against the old one is quietly off."""
+
+    @pytest.mark.parametrize("shape, kernel_shape", [
+        ((269, 1982), (21, 27)), ((131, 77), (9, 13)), ((50, 50), (21, 37)),
+        ((40, 60), (8, 6)),
+    ])
+    def test_matches_scipy_fftconvolve(self, shape, kernel_shape):
+        from scipy.signal import fftconvolve
+        rng = np.random.default_rng(0)
+        image = (rng.random(shape) > 0.8).astype(np.float32)
+        kernel = rng.random(kernel_shape).astype(np.float32)
+        expected = fftconvolve(image, kernel, mode="same")
+        got = geometry._convolve_same(image, kernel)
+        assert got.dtype == expected.dtype
+        np.testing.assert_allclose(got, expected, rtol=0, atol=1e-5)
+
+
+def test_an_idle_server_does_not_load_scipy():
+    """Importing the app must not load scipy's numerics: an idle server would just be
+    holding them in memory.  They load on the first upload instead."""
+    import subprocess
+    import sys
+    code = ("import sys, app; "
+            "print(*(type(sys.modules.get(name)).__name__ "
+            "for name in ('scipy.ndimage', 'scipy.fft', 'scipy.signal')))")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True,
+                         text=True, check=True).stdout.split()
+    assert out == ["_LazyModule", "_LazyModule", "NoneType"]
